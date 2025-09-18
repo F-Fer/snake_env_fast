@@ -9,7 +9,7 @@ BatchedEnv::BatchedEnv(int num_envs) : N(num_envs),
 void BatchedEnv::full_reset() {
   std::fill(x.begin(), x.end(), 0.f);
   std::fill(obs.begin(), obs.end(), 0.f);
-  std::fill(reward.begin(), reward.end(), 0.f);
+  std::fill(reward.begin(), reward.end(), 0.f); 
   std::fill(terminated.begin(), terminated.end(), 0);
   std::fill(truncated.begin(), truncated.end(), 0);
 }
