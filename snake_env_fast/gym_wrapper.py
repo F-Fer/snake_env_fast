@@ -9,7 +9,8 @@ class FastVectorEnv(gym.vector.VectorEnv):
     def __init__(self, num_envs: int):
         self._core = BatchedEnv(num_envs)
         self.single_observation_space = spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32)
-        self.single_action_space = spaces.Box(-1.0, 1.0, shape=(1,), dtype=np.float32)
+        # C++ expects an angle in [0, 2*pi)
+        self.single_action_space = spaces.Box(0.0, 2*np.pi, shape=(1,), dtype=np.float32)
         super().__init__(num_envs, self.single_observation_space, self.single_action_space)
 
     def reset(self, seed=None, options=None):
@@ -20,7 +21,7 @@ class FastVectorEnv(gym.vector.VectorEnv):
 
     def step(self, actions):
         actions = np.ascontiguousarray(actions, dtype=np.float32)
-        self._core.step(actions, 1.0)
+        self._core.step(actions)
         obs = np.asarray(self._core.obs, dtype=np.float32).reshape(self.num_envs, 1)
         rew = np.asarray(self._core.reward, dtype=np.float32)
         term = np.asarray(self._core.terminated, dtype=bool)

@@ -11,7 +11,7 @@ enum class RenderMode { Headless };
 
 // Define the observation size for each render mode
 enum class ObservationSize {
-    Headless = 7 // head_x, head_y, dir_angle, snake_len, nearest_food_x, nearest_food_y, nearest_food_dist
+    Headless = 1 // minimal prototype: expose head_x only
 };
 
 // Minimal "Box" space description for introspection via bindings.

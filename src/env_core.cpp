@@ -3,7 +3,7 @@
 #include <cmath>
 #include <stdexcept>
 
-BatchedEnv::BatchedEnv(int num_envs, RenderMode mode = RenderMode::Headless, int map_size = 100, int step_size = 1)
+BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_size)
   : N(num_envs),
     obs_dim(mode == RenderMode::Headless ? static_cast<int>(ObservationSize::Headless) : throw std::runtime_error("RenderMode not supported")),
     act_dim(1),
