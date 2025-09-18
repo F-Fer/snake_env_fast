@@ -22,7 +22,6 @@ BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_siz
     dir_angle(N, 0.f),
     snake_len(N, 1)
 {
-    std::cout << obs_dim << std::endl;
     full_reset();
 }
 

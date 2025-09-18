@@ -10,9 +10,15 @@ class FastVectorEnv(VectorEnv):
     def __init__(self, num_envs: int):
         self._core = BatchedEnv(num_envs)
         self.num_envs = num_envs
-        self.single_observation_space = spaces.Box(-np.inf, np.inf, shape=(4,), dtype=np.float32)
-        # C++ expects an angle in [0, 2*pi)
-        self.single_action_space = spaces.Box(0.0, 2*np.pi, shape=(1,), dtype=np.float32)
+        # Build spaces from core dims (source of truth)
+        obs_dim = int(self._core.obs_dim)
+        act_dim = int(self._core.act_dim)
+        self.single_observation_space = spaces.Box(
+            low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
+        )
+        self.single_action_space = spaces.Box(
+            low=0.0, high=2*np.pi, shape=(act_dim,), dtype=np.float32
+        )
         # Batched spaces required by VectorEnv
         self.observation_space = batch_space(self.single_observation_space, num_envs)
         self.action_space = batch_space(self.single_action_space, num_envs)
