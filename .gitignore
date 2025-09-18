@@ -1,5 +1,6 @@
 .venv/
 .vscode/
+.cursor/
 build/
 dist/
 *.egg-info/

@@ -8,7 +8,9 @@ version = "0.0.1"
 description = "Fast batched C++ snake env with Gymnasium wrapper"
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = ["gymnasium>=0.29"]
+dependencies = [
+    "gymnasium>=0.29",
+]
 
 [tool.scikit-build]
 wheel.packages = ["snake_env_fast"]
