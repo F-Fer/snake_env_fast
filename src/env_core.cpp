@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <iostream>
 
 BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_size)
   : N(num_envs),
@@ -21,6 +22,7 @@ BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_siz
     dir_angle(N, 0.f),
     snake_len(N, 1)
 {
+    std::cout << obs_dim << std::endl;
     full_reset();
 }
 
@@ -47,6 +49,9 @@ void BatchedEnv::reset(const uint8_t* mask) {
             snake_len[i] = 1;
             if (obs_dim >= 1) {
                 obs[i * obs_dim + 0] = head_x[i];
+                obs[i * obs_dim + 1] = head_y[i];
+                obs[i * obs_dim + 2] = dir_angle[i];
+                obs[i * obs_dim + 3] = snake_len[i];
             }
         }
     }
@@ -69,6 +74,9 @@ void BatchedEnv::step(const float* actions) {
     reward[i] = 0.0f; // placeholder reward
     if (obs_dim >= 1) {
       obs[i * obs_dim + 0] = head_x[i];
+      obs[i * obs_dim + 1] = head_y[i];
+      obs[i * obs_dim + 2] = dir_angle[i];
+      obs[i * obs_dim + 3] = snake_len[i];
     }
   }
 }

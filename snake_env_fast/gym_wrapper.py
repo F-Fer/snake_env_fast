@@ -10,7 +10,7 @@ class FastVectorEnv(VectorEnv):
     def __init__(self, num_envs: int):
         self._core = BatchedEnv(num_envs)
         self.num_envs = num_envs
-        self.single_observation_space = spaces.Box(-np.inf, np.inf, shape=(1,), dtype=np.float32)
+        self.single_observation_space = spaces.Box(-np.inf, np.inf, shape=(4,), dtype=np.float32)
         # C++ expects an angle in [0, 2*pi)
         self.single_action_space = spaces.Box(0.0, 2*np.pi, shape=(1,), dtype=np.float32)
         # Batched spaces required by VectorEnv
@@ -21,6 +21,7 @@ class FastVectorEnv(VectorEnv):
         mask = np.ones(self.num_envs, dtype=np.uint8)
         self._core.reset(mask)
         obs_dim = self.single_observation_space.shape[0]
+        obs = np.asarray(self._core.obs, dtype=np.float32)
         obs = np.asarray(self._core.obs, dtype=np.float32).reshape(self.num_envs, obs_dim)
         return obs, {}
 
@@ -46,10 +47,10 @@ class FastVectorEnv(VectorEnv):
 if __name__ == "__main__":
     env = FastVectorEnv(1)
     obs, _ = env.reset()
-    print(obs)
+    print(f"obs: {obs}")
     action = env.action_space.sample()
     obs, rew, term, trunc, _ = env.step(action)
-    print(obs)
-    print(rew)
-    print(term)
-    print(trunc)
+    print(f"obs: {obs}")
+    print(f"rew: {rew}")
+    print(f"term: {term}")
+    print(f"trunc: {trunc}")
