@@ -19,8 +19,20 @@ py::array make_view(std::vector<T>& v, std::vector<ssize_t> shape) {
 }
 
 PYBIND11_MODULE(_fastenv, m) {
+    py::enum_<RenderMode>(m, "RenderMode")
+        .value("Headless", RenderMode::Headless)
+        .export_values();
+
     py::class_<BatchedEnv>(m, "BatchedEnv")
-        .def(py::init<int>(), py::arg("num_envs"))
+        .def(py::init<int, RenderMode, int, int, int, float, float, unsigned long long>(),
+             py::arg("num_envs"),
+             py::arg("mode") = RenderMode::Headless,
+             py::arg("map_size") = 100,
+             py::arg("step_size") = 1,
+             py::arg("max_steps") = 1000,
+             py::arg("max_turn") = kPi / 4.0f,
+             py::arg("eat_radius") = 1.0f,
+             py::arg("seed") = 0ULL)
         .def_property_readonly("single_observation_space", [](const BatchedEnv& e){
             py::dict d;
             d["low"] = e.single_observation_space.low;
@@ -52,6 +64,7 @@ PYBIND11_MODULE(_fastenv, m) {
             py::gil_scoped_release release;
             e.step(actions.data());
         }, py::arg("actions"))
+        .def("set_seed", &BatchedEnv::set_seed, py::arg("seed"))
         .def_property_readonly("obs", [](BatchedEnv& e){ return make_view(e.obs, {e.N, e.obs_dim}); })
         .def_property_readonly("reward", [](BatchedEnv& e){ return make_view(e.reward, {e.N}); })
         .def_property_readonly("terminated", [](BatchedEnv& e){ return make_view(e.terminated, {e.N}); })

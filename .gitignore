@@ -1,6 +1,7 @@
 .venv/
 .vscode/
 .cursor/
+.ruff_cache/
 build/
 dist/
 *.egg-info/
