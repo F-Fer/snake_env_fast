@@ -24,7 +24,7 @@ PYBIND11_MODULE(_fastenv, m) {
         .export_values();
 
     py::class_<BatchedEnv>(m, "BatchedEnv")
-        .def(py::init<int, RenderMode, int, int, int, float, float, unsigned long long>(),
+        .def(py::init<int, RenderMode, int, int, int, float, float, unsigned long long, int, int, float, float, float>(),
              py::arg("num_envs"),
              py::arg("mode") = RenderMode::Headless,
              py::arg("map_size") = 100,
@@ -32,7 +32,12 @@ PYBIND11_MODULE(_fastenv, m) {
              py::arg("max_steps") = 1000,
              py::arg("max_turn") = kPi / 4.0f,
              py::arg("eat_radius") = 1.0f,
-             py::arg("seed") = 0ULL)
+             py::arg("seed") = 0ULL,
+             py::arg("max_segments") = 64,
+             py::arg("initial_segments") = 4,
+             py::arg("segment_radius") = 2.0f,
+             py::arg("min_segment_distance") = 3.0f,
+             py::arg("cell_size") = 3.0f)
         .def_property_readonly("single_observation_space", [](const BatchedEnv& e){
             py::dict d;
             d["low"] = e.single_observation_space.low;

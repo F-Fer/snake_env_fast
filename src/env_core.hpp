@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <utility>
 
-// Constant used for angle wrapping; action is an angle in [0, 2π]
+// Constant used for angle wrapping
 constexpr float kTwoPi = 6.283185307179586f;
 constexpr float kPi    = 3.141592653589793f;
 
@@ -47,10 +47,17 @@ public:
 
     // Game parameters
     const int map_size; // square map size
-    const int step_size;
+    const int step_size; // head speed in world units per step
     const int max_steps; // truncation after this many steps since reset
     const float max_turn; // per-step max turn in radians (delta heading)
     const float eat_radius; // distance threshold to eat food
+    const int max_segments; // capacity of segments per env
+    const int initial_segments; // starting number of segments
+    const float segment_radius; // for collisions and rendering
+    const float min_segment_distance; // target spacing between segments
+    const float cell_size; // spatial hash cell size
+    const int grid_w; // spatial hash width
+    const int grid_h; // spatial hash height
 
     // Space metadata (single env)
     BoxSpace single_observation_space;
@@ -77,6 +84,16 @@ public:
     // RNG per env for deterministic spawning
     std::vector<unsigned long long> rng_state; // simple LCG or seed storage
 
+    // Continuous snake body (beads), SoA
+    std::vector<float> segments_x; // [N * max_segments]
+    std::vector<float> segments_y; // [N * max_segments]
+    std::vector<int>   segments_count; // [N]
+    std::vector<int>   pending_growth; // [N]
+
+    // Spatial hash for collision/queries
+    std::vector<int> cell_head;   // [N * grid_w * grid_h], -1 for empty
+    std::vector<int> next_in_cell; // [N * max_segments], next index or -1
+
     // Actions are a single angle per env; act_dim is fixed to 1.
     explicit BatchedEnv(
         int num_envs,
@@ -86,7 +103,12 @@ public:
         int max_steps = 1000,
         float max_turn = kPi / 4.0f,
         float eat_radius = 1.0f,
-        unsigned long long seed = 0ULL
+        unsigned long long seed = 0ULL,
+        int max_segments = 64,
+        int initial_segments = 4,
+        float segment_radius = 2.0f,
+        float min_segment_distance = 3.0f,
+        float cell_size = 3.0f
     );
 
     // Disallow copying (large buffers); allow moving if needed (default okay).
