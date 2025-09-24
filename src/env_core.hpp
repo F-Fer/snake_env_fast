@@ -8,7 +8,7 @@ constexpr float kTwoPi = 6.283185307179586f;
 constexpr float kPi    = 3.141592653589793f;
 
 // Render modes
-enum class RenderMode { Headless };
+enum class RenderMode { Headless, RGB };
 
 // Define the observation size for each render mode
 enum class ObservationSize {
@@ -81,6 +81,8 @@ public:
     std::vector<float> food_y;     // [N]
     std::vector<int>   steps_since_reset; // [N]
 
+    std::vector<uint8_t> rgb_image; // [N * H * W * 3] if render_mode is RenderMode::RGB
+
     // RNG per env for deterministic spawning
     std::vector<unsigned long long> rng_state; // simple LCG or seed storage
 
@@ -126,4 +128,7 @@ public:
 
     // Set base seed for all envs (env i uses seed + i)
     void set_seed(unsigned long long seed);
+
+    // Render RGB frames into rgb_image if render_mode == RenderMode::RGB
+    void render_rgb();
 };

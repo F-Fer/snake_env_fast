@@ -21,6 +21,7 @@ py::array make_view(std::vector<T>& v, std::vector<ssize_t> shape) {
 PYBIND11_MODULE(_fastenv, m) {
     py::enum_<RenderMode>(m, "RenderMode")
         .value("Headless", RenderMode::Headless)
+        .value("RGB", RenderMode::RGB)
         .export_values();
 
     py::class_<BatchedEnv>(m, "BatchedEnv")
@@ -70,7 +71,12 @@ PYBIND11_MODULE(_fastenv, m) {
             e.step(actions.data());
         }, py::arg("actions"))
         .def("set_seed", &BatchedEnv::set_seed, py::arg("seed"))
+        .def("render_rgb", &BatchedEnv::render_rgb)
         .def_property_readonly("obs", [](BatchedEnv& e){ return make_view(e.obs, {e.N, e.obs_dim}); })
+        .def_property_readonly("rgb", [](BatchedEnv& e){ return py::array(py::buffer_info(
+            e.rgb_image.data(), sizeof(uint8_t), py::format_descriptor<uint8_t>::format(),
+            4, {e.N, 84, 84, 3}, {static_cast<ssize_t>(84*84*3), static_cast<ssize_t>(84*3), static_cast<ssize_t>(3), static_cast<ssize_t>(1)}
+        )); })
         .def_property_readonly("reward", [](BatchedEnv& e){ return make_view(e.reward, {e.N}); })
         .def_property_readonly("terminated", [](BatchedEnv& e){ return make_view(e.terminated, {e.N}); })
         .def_property_readonly("truncated", [](BatchedEnv& e){ return make_view(e.truncated, {e.N}); })

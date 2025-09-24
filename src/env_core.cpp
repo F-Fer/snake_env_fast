@@ -39,7 +39,8 @@ static inline float wrap_coord_0_map(float x, int map_size) {
 
 BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_size, int max_steps, float max_turn, float eat_radius, unsigned long long seed, int max_segments, int initial_segments, float segment_radius, float min_segment_distance, float cell_size)
   : N(num_envs),
-    obs_dim(mode == RenderMode::Headless ? static_cast<int>(ObservationSize::Headless) : throw std::runtime_error("RenderMode not supported")),
+    // Support both Headless and RGB with the same observation layout for now
+    obs_dim(static_cast<int>(ObservationSize::Headless)),
     act_dim(1),
     map_size(map_size),
     step_size(step_size),
@@ -53,10 +54,10 @@ BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_siz
     cell_size(cell_size),
     grid_w(static_cast<int>(std::ceil(static_cast<float>(map_size) / cell_size))),
     grid_h(static_cast<int>(std::ceil(static_cast<float>(map_size) / cell_size))),
-    single_observation_space(mode == RenderMode::Headless ? BoxSpace(-INFINITY, INFINITY, {static_cast<int>(ObservationSize::Headless)}, "float32") : BoxSpace(0, 0, {0}, "float32")),
+    single_observation_space(BoxSpace(-INFINITY, INFINITY, {static_cast<int>(ObservationSize::Headless)}, "float32")),
     single_action_space(-max_turn, max_turn, {1}, "float32"),
     render_mode(mode),
-    obs(N * (mode == RenderMode::Headless ? static_cast<int>(ObservationSize::Headless) : 0), 0.f),
+    obs(N * static_cast<int>(ObservationSize::Headless), 0.f),
     reward(N, 0.f),
     terminated(N, 0),
     truncated(N, 0),
@@ -67,6 +68,7 @@ BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_siz
     food_x(N, 0.f),
     food_y(N, 0.f),
     steps_since_reset(N, 0),
+    rgb_image(mode == RenderMode::RGB ? N * 84 * 84 * 3 : 0, 0),
     rng_state(N, 0ULL),
     segments_x(static_cast<size_t>(N) * static_cast<size_t>(max_segments), 0.f),
     segments_y(static_cast<size_t>(N) * static_cast<size_t>(max_segments), 0.f),
@@ -425,5 +427,49 @@ void BatchedEnv::set_seed(unsigned long long seed) {
     uint64_t s = static_cast<uint64_t>(seed) + golden * static_cast<uint64_t>(i + 1);
     if (s == 0ULL) s = golden; // avoid zero state
     rng_state[i] = s;
+  }
+}
+
+// Very simple software renderer: draw head, body, and food as filled circles into NHWC uint8 buffer.
+// Resolution: 84x84, per-env slice is contiguous.
+void BatchedEnv::render_rgb() {
+  if (render_mode != RenderMode::RGB) return;
+  const int H = 84, W = 84, C = 3;
+  const float scale = 84.0f / static_cast<float>(map_size);
+  // Clear
+  std::fill(rgb_image.begin(), rgb_image.end(), static_cast<uint8_t>(0));
+  for (int i = 0; i < N; ++i) {
+    const int base_img = i * H * W * C;
+    auto put_px = [&](int x, int y, uint8_t r, uint8_t g, uint8_t b){
+      if (x < 0 || x >= W || y < 0 || y >= H) return;
+      const int idx = base_img + (y * W + x) * C;
+      rgb_image[idx + 0] = r;
+      rgb_image[idx + 1] = g;
+      rgb_image[idx + 2] = b;
+    };
+    auto draw_disk = [&](float cx, float cy, float rad, uint8_t r, uint8_t g, uint8_t b){
+      int sx = static_cast<int>(cx * scale);
+      int sy = static_cast<int>(cy * scale);
+      int rr = std::max(1, static_cast<int>(rad * scale));
+      int xmin = std::max(0, sx - rr), xmax = std::min(W - 1, sx + rr);
+      int ymin = std::max(0, sy - rr), ymax = std::min(H - 1, sy + rr);
+      int rr2 = rr * rr;
+      for (int y = ymin; y <= ymax; ++y) {
+        int dy = y - sy;
+        for (int x = xmin; x <= xmax; ++x) {
+          int dx = x - sx;
+          if (dx*dx + dy*dy <= rr2) put_px(x, y, r, g, b);
+        }
+      }
+    };
+    // Draw body segments
+    const int base_seg = i * max_segments;
+    for (int s = 0; s < segments_count[i]; ++s) {
+      draw_disk(segments_x[base_seg + s], segments_y[base_seg + s], segment_radius, 80, 200, 80);
+    }
+    // Draw head brighter
+    draw_disk(head_x[i], head_y[i], segment_radius * 1.1f, 40, 255, 40);
+    // Draw food
+    draw_disk(food_x[i], food_y[i], eat_radius, 200, 60, 60);
   }
 }

@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 class FastVectorEnv(VectorEnv):
-    metadata = {"render_modes": []}
+    metadata = {"render_modes": ["rgb_array", "headless"], "render_fps": 30}
     def __init__(
         self,
         num_envs: int,
@@ -21,10 +21,13 @@ class FastVectorEnv(VectorEnv):
         max_turn: float = np.pi / 4.0,
         eat_radius: float = 1.0,
         seed: int | None = None,
+        render_mode: str | None = None,
     ):
+        self._render_mode = render_mode
+        mode = RenderMode.RGB if render_mode == "rgb_array" else RenderMode.Headless
         self._core = BatchedEnv(
             num_envs,
-            RenderMode.Headless,
+            mode,
             map_size,
             step_size,
             max_steps,
@@ -77,24 +80,22 @@ class FastVectorEnv(VectorEnv):
             self._core.reset((term | trunc).astype(np.uint8))
         return obs, rew, term, trunc, {}
 
+    def render(self):
+        if self._render_mode != "rgb_array":
+            return None
+        self._core.render_rgb()
+        # Return a tuple of (H, W, C) arrays as expected by vector API
+        frames = np.asarray(self._core.rgb, dtype=np.uint8)
+        # frames shape is (N, 84, 84, 3)
+        return tuple(frames[i] for i in range(self.num_envs))
+
 if __name__ == "__main__":
-    env = FastVectorEnv(16)
+    env = FastVectorEnv(16, render_mode="rgb_array")
     obs, _ = env.reset()
-    print(f"obs: {obs}")
+    print(f"obs shape: {obs.shape}")
+    frames = env.render()
+    print(f"frames[0] shape: {frames[0].shape}")
     action = env.action_space.sample()
     obs, rew, term, trunc, _ = env.step(action)
-    print(f"obs: {obs}")
-    print(f"rew: {rew}")
-    print(f"term: {term}")
-    print(f"trunc: {trunc}")
-    for i in range(1000):
-        action = env.action_space.sample()
-        obs, rew, term, trunc, _ = env.step(action)
-        if term.any() or trunc.any():
-            x = np.where(term | trunc)[0][0]
-            print(f"Env {x} terminated or truncated at step {i}")
-        if rew.any():
-            x = np.where(rew > 0)[0][0]
-            print(f"Env {x} rewarded at step {i}")
-        if i % 100 == 0:
-            print(f"Step {i}")
+    frames = env.render()
+    print(f"step frames[0] shape: {frames[0].shape}")
