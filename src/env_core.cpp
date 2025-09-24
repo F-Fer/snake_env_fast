@@ -181,88 +181,88 @@ void BatchedEnv::full_reset() {
 }
 
 void BatchedEnv::reset(const uint8_t* mask) {
-    for (int i = 0; i < N; ++i) {
-        if (mask[i]) {
-            reward[i] = 0.f;
-            terminated[i] = 0;
-            truncated[i] = 0;
-            steps_since_reset[i] = 0;
-            // Randomize head and angle
-            float rx = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i]));
-            float ry = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i]));
-            float ra = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i]));
-            float hx = rx * static_cast<float>(map_size);
-            float hy = ry * static_cast<float>(map_size);
-            head_x[i] = hx;
-            head_y[i] = hy;
-            dir_angle[i] = ra * kTwoPi;
-            pending_growth[i] = 0;
-            const int base_seg = i * max_segments;
-            segments_count[i] = std::min(initial_segments, max_segments);
-            for (int s = 0; s < segments_count[i]; ++s) {
-                float offset = static_cast<float>(s) * min_segment_distance;
-                float ax = (s == 0 ? 0.0f : std::cos(dir_angle[i] + kPi) * offset);
-                float ay = (s == 0 ? 0.0f : std::sin(dir_angle[i] + kPi) * offset);
-                segments_x[base_seg + s] = wrap_coord_0_map(hx + ax, map_size);
-                segments_y[base_seg + s] = wrap_coord_0_map(hy + ay, map_size);
+  for (int i = 0; i < N; ++i) {
+    if (mask[i]) {
+      reward[i] = 0.f;
+      terminated[i] = 0;
+      truncated[i] = 0;
+      steps_since_reset[i] = 0;
+      // Randomize head and angle
+      float rx = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i]));
+      float ry = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i]));
+      float ra = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i]));
+      float hx = rx * static_cast<float>(map_size);
+      float hy = ry * static_cast<float>(map_size);
+      head_x[i] = hx;
+      head_y[i] = hy;
+      dir_angle[i] = ra * kTwoPi;
+      pending_growth[i] = 0;
+      const int base_seg = i * max_segments;
+      segments_count[i] = std::min(initial_segments, max_segments);
+      for (int s = 0; s < segments_count[i]; ++s) {
+        float offset = static_cast<float>(s) * min_segment_distance;
+        float ax = (s == 0 ? 0.0f : std::cos(dir_angle[i] + kPi) * offset);
+        float ay = (s == 0 ? 0.0f : std::sin(dir_angle[i] + kPi) * offset);
+        segments_x[base_seg + s] = wrap_coord_0_map(hx + ax, map_size);
+        segments_y[base_seg + s] = wrap_coord_0_map(hy + ay, map_size);
+      }
+      // Rebuild hash for this env
+      const int cell_base = i * grid_w * grid_h;
+      for (int c = 0; c < grid_w * grid_h; ++c) cell_head[cell_base + c] = -1;
+      for (int s = 0; s < segments_count[i]; ++s) {
+        int cx = static_cast<int>(segments_x[base_seg + s] / cell_size);
+        int cy = static_cast<int>(segments_y[base_seg + s] / cell_size);
+        if (cx < 0) cx = 0; if (cx >= grid_w) cx = grid_w - 1;
+        if (cy < 0) cy = 0; if (cy >= grid_h) cy = grid_h - 1;
+        int cell_idx = cell_base + cy * grid_w + cx;
+        next_in_cell[base_seg + s] = cell_head[cell_idx];
+        cell_head[cell_idx] = base_seg + s;
+      }
+      // Respawn food with spacing
+      float fx = 0.f, fy = 0.f;
+      bool placed = false;
+      for (int tries = 0; tries < 64 && !placed; ++tries) {
+        fx = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
+        fy = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
+        int cx = static_cast<int>(fx / cell_size);
+        int cy = static_cast<int>(fy / cell_size);
+        if (cx < 0) cx = 0; if (cx >= grid_w) cx = grid_w - 1;
+        if (cy < 0) cy = 0; if (cy >= grid_h) cy = grid_h - 1;
+        bool ok = true;
+        for (int oy = -1; oy <= 1 && ok; ++oy) {
+          for (int ox = -1; ox <= 1 && ok; ++ox) {
+            int ncx = cx + ox, ncy = cy + oy;
+            if (ncx < 0 || ncx >= grid_w || ncy < 0 || ncy >= grid_h) continue;
+            int head_idx = cell_head[cell_base + ncy * grid_w + ncx];
+            while (head_idx != -1) {
+                int sidx = head_idx - base_seg;
+                float dx = segments_x[base_seg + sidx] - fx;
+                float dy = segments_y[base_seg + sidx] - fy;
+                if (std::sqrt(dx*dx + dy*dy) < (segment_radius + eat_radius)) { ok = false; break; }
+                head_idx = next_in_cell[head_idx];
             }
-            // Rebuild hash for this env
-            const int cell_base = i * grid_w * grid_h;
-            for (int c = 0; c < grid_w * grid_h; ++c) cell_head[cell_base + c] = -1;
-            for (int s = 0; s < segments_count[i]; ++s) {
-                int cx = static_cast<int>(segments_x[base_seg + s] / cell_size);
-                int cy = static_cast<int>(segments_y[base_seg + s] / cell_size);
-                if (cx < 0) cx = 0; if (cx >= grid_w) cx = grid_w - 1;
-                if (cy < 0) cy = 0; if (cy >= grid_h) cy = grid_h - 1;
-                int cell_idx = cell_base + cy * grid_w + cx;
-                next_in_cell[base_seg + s] = cell_head[cell_idx];
-                cell_head[cell_idx] = base_seg + s;
-            }
-            // Respawn food with spacing
-            float fx = 0.f, fy = 0.f;
-            bool placed = false;
-            for (int tries = 0; tries < 64 && !placed; ++tries) {
-                fx = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
-                fy = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
-                int cx = static_cast<int>(fx / cell_size);
-                int cy = static_cast<int>(fy / cell_size);
-                if (cx < 0) cx = 0; if (cx >= grid_w) cx = grid_w - 1;
-                if (cy < 0) cy = 0; if (cy >= grid_h) cy = grid_h - 1;
-                bool ok = true;
-                for (int oy = -1; oy <= 1 && ok; ++oy) {
-                    for (int ox = -1; ox <= 1 && ok; ++ox) {
-                        int ncx = cx + ox, ncy = cy + oy;
-                        if (ncx < 0 || ncx >= grid_w || ncy < 0 || ncy >= grid_h) continue;
-                        int head_idx = cell_head[cell_base + ncy * grid_w + ncx];
-                        while (head_idx != -1) {
-                            int sidx = head_idx - base_seg;
-                            float dx = segments_x[base_seg + sidx] - fx;
-                            float dy = segments_y[base_seg + sidx] - fy;
-                            if (std::sqrt(dx*dx + dy*dy) < (segment_radius + eat_radius)) { ok = false; break; }
-                            head_idx = next_in_cell[head_idx];
-                        }
-                    }
-                }
-                if (ok) placed = true;
-            }
-            food_x[i] = placed ? fx : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
-            food_y[i] = placed ? fy : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
-
-            if (obs_dim >= 1) {
-                const int base = i * obs_dim;
-                const float dx = food_x[i] - head_x[i];
-                const float dy = food_y[i] - head_y[i];
-                const float dist = std::sqrt(dx*dx + dy*dy);
-                obs[base + 0] = head_x[i];
-                obs[base + 1] = head_y[i];
-                obs[base + 2] = dir_angle[i];
-                obs[base + 3] = static_cast<float>(segments_count[i]);
-                obs[base + 4] = food_x[i];
-                obs[base + 5] = food_y[i];
-                obs[base + 6] = dist;
-            }
+          }
         }
+        if (ok) placed = true;
+      }
+      food_x[i] = placed ? fx : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
+      food_y[i] = placed ? fy : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
+
+      if (obs_dim >= 1) {
+          const int base = i * obs_dim;
+          const float dx = food_x[i] - head_x[i];
+          const float dy = food_y[i] - head_y[i];
+          const float dist = std::sqrt(dx*dx + dy*dy);
+          obs[base + 0] = head_x[i];
+          obs[base + 1] = head_y[i];
+          obs[base + 2] = dir_angle[i];
+          obs[base + 3] = static_cast<float>(segments_count[i]);
+          obs[base + 4] = food_x[i];
+          obs[base + 5] = food_y[i];
+          obs[base + 6] = dist;
+      }
     }
+  }
 }
 
 void BatchedEnv::step(const float* actions) {
