@@ -281,10 +281,18 @@ void BatchedEnv::step(const float* actions) {
     const int base_seg = i * max_segments;
     float hx = segments_x[base_seg + 0];
     float hy = segments_y[base_seg + 0];
-    hx = wrap_coord_0_map(hx + std::cos(dir_angle[i]) * static_cast<float>(step_size), map_size);
-    hy = wrap_coord_0_map(hy + std::sin(dir_angle[i]) * static_cast<float>(step_size), map_size);
+    hx = hx + std::cos(dir_angle[i]) * static_cast<float>(step_size);
+    hy = hy + std::sin(dir_angle[i]) * static_cast<float>(step_size);
+    // Check if head is out of bounds
+    if (hx < 0 || hx >= map_size || hy < 0 || hy >= map_size) {
+      terminated[i] = 1;
+      truncated[i] = 1;
+      continue;
+    }
+    // Update segments[0]
     segments_x[base_seg + 0] = hx;
     segments_y[base_seg + 0] = hy;
+    // Update head_x and head_y
     head_x[i] = hx;
     head_y[i] = hy;
 
@@ -438,8 +446,10 @@ void BatchedEnv::render_rgb() {
   const float scale = 84.0f / static_cast<float>(map_size);
   // Clear
   std::fill(rgb_image.begin(), rgb_image.end(), static_cast<uint8_t>(0));
+  // For each env
   for (int i = 0; i < N; ++i) {
     const int base_img = i * H * W * C;
+    // Helper functions for drawing pixels
     auto put_px = [&](int x, int y, uint8_t r, uint8_t g, uint8_t b){
       if (x < 0 || x >= W || y < 0 || y >= H) return;
       const int idx = base_img + (y * W + x) * C;
@@ -447,6 +457,7 @@ void BatchedEnv::render_rgb() {
       rgb_image[idx + 1] = g;
       rgb_image[idx + 2] = b;
     };
+    // Helper function for drawing a disk
     auto draw_disk = [&](float cx, float cy, float rad, uint8_t r, uint8_t g, uint8_t b){
       int sx = static_cast<int>(cx * scale);
       int sy = static_cast<int>(cy * scale);
