@@ -52,8 +52,6 @@ BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_siz
     reward(N, 0.f),
     terminated(N, 0),
     truncated(N, 0),
-    head_x(N, 0.f),
-    head_y(N, 0.f),
     dir_angle(N, 0.f),
     snake_len(N, 1),
     food_x(N, 0.f),
@@ -77,8 +75,6 @@ void BatchedEnv::full_reset() {
   std::fill(reward.begin(), reward.end(), 0.f);
   std::fill(terminated.begin(), terminated.end(), 0);
   std::fill(truncated.begin(), truncated.end(), 0);
-  std::fill(head_x.begin(), head_x.end(), 0.f);
-  std::fill(head_y.begin(), head_y.end(), 0.f);
   std::fill(dir_angle.begin(), dir_angle.end(), 0.f);
   std::fill(snake_len.begin(), snake_len.end(), initial_segments);
   std::fill(food_x.begin(), food_x.end(), 0.f);
@@ -96,8 +92,6 @@ void BatchedEnv::full_reset() {
     float ra = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i]));
     float hx = rx * static_cast<float>(map_size);
     float hy = ry * static_cast<float>(map_size);
-    head_x[i] = hx;
-    head_y[i] = hy;
     dir_angle[i] = ra * kTwoPi;
 
     // Initialize segments behind head
@@ -159,11 +153,14 @@ void BatchedEnv::full_reset() {
     // Fill observation (7D)
     if (obs_dim >= 1) {
       const int base = i * obs_dim;
-      const float dx = food_x[i] - head_x[i];
-      const float dy = food_y[i] - head_y[i];
+      const int base_seg = i * max_segments;
+      const float hx = segments_x[base_seg + 0];
+      const float hy = segments_y[base_seg + 0];
+      const float dx = food_x[i] - hx;
+      const float dy = food_y[i] - hy;
       const float dist = std::sqrt(dx*dx + dy*dy);
-      obs[base + 0] = head_x[i];
-      obs[base + 1] = head_y[i];
+      obs[base + 0] = hx;
+      obs[base + 1] = hy;
       obs[base + 2] = dir_angle[i];
       obs[base + 3] = static_cast<float>(segments_count[i]);
       obs[base + 4] = food_x[i];
@@ -186,12 +183,12 @@ void BatchedEnv::reset(const uint8_t* mask) {
       float ra = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i]));
       float hx = rx * static_cast<float>(map_size);
       float hy = ry * static_cast<float>(map_size);
-      head_x[i] = hx;
-      head_y[i] = hy;
       dir_angle[i] = ra * kTwoPi;
       pending_growth[i] = 0;
       const int base_seg = i * max_segments;
       segments_count[i] = std::min(initial_segments, max_segments);
+      segments_x[base_seg + 0] = hx;
+      segments_y[base_seg + 0] = hy;
       for (int s = 0; s < segments_count[i]; ++s) {
         float offset = static_cast<float>(s) * min_segment_distance;
         float ax = (s == 0 ? 0.0f : std::cos(dir_angle[i] + kPi) * offset);
@@ -243,11 +240,13 @@ void BatchedEnv::reset(const uint8_t* mask) {
 
       if (obs_dim >= 1) {
           const int base = i * obs_dim;
-          const float dx = food_x[i] - head_x[i];
-          const float dy = food_y[i] - head_y[i];
+          const float hx = segments_x[base_seg + 0];
+          const float hy = segments_y[base_seg + 0];
+          const float dx = food_x[i] - hx;
+          const float dy = food_y[i] - hy;
           const float dist = std::sqrt(dx*dx + dy*dy);
-          obs[base + 0] = head_x[i];
-          obs[base + 1] = head_y[i];
+          obs[base + 0] = hx;
+          obs[base + 1] = hy;
           obs[base + 2] = dir_angle[i];
           obs[base + 3] = static_cast<float>(segments_count[i]);
           obs[base + 4] = food_x[i];
@@ -283,9 +282,6 @@ void BatchedEnv::step(const float* actions) {
     // Update segments[0]
     segments_x[base_seg + 0] = hx;
     segments_y[base_seg + 0] = hy;
-    // Update head_x and head_y
-    head_x[i] = hx;
-    head_y[i] = hy;
 
     // Follow pass for body segments
     const int segs = segments_count[i];
@@ -408,8 +404,8 @@ void BatchedEnv::step(const float* actions) {
     // Write observation
     if (obs_dim >= 1) {
       const int base = i * obs_dim;
-      obs[base + 0] = hx;
-      obs[base + 1] = hy;
+      obs[base + 0] = segments_x[base_seg + 0];
+      obs[base + 1] = segments_y[base_seg + 0];
       obs[base + 2] = dir_angle[i];
       obs[base + 3] = static_cast<float>(segments_count[i]);
       obs[base + 4] = food_x[i];
@@ -470,7 +466,7 @@ void BatchedEnv::render_rgb() {
       draw_disk(segments_x[base_seg + s], segments_y[base_seg + s], segment_radius, 80, 200, 80);
     }
     // Draw head brighter
-    draw_disk(head_x[i], head_y[i], segment_radius * 1.1f, 40, 255, 40);
+    draw_disk(segments_x[base_seg + 0], segments_y[base_seg + 0], segment_radius * 1.1f, 40, 255, 40);
     // Draw food
     draw_disk(food_x[i], food_y[i], eat_radius, 200, 60, 60);
   }

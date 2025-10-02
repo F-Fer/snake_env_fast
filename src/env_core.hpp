@@ -73,8 +73,6 @@ public:
     std::vector<uint8_t> truncated;  // [N]
 
     // Minimal internal state 
-    std::vector<float> head_x;     // [N]
-    std::vector<float> head_y;     // [N]
     std::vector<float> dir_angle;  // [N] in range [0, 2*pi]
     std::vector<int>   snake_len;  // [N] starts from 3
     std::vector<float> food_x;     // [N]
