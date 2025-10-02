@@ -28,7 +28,7 @@ static inline float wrap_angle_0_2pi(float a) {
   return a;
 }
 
-BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_size, int max_steps, float max_turn, float eat_radius, unsigned long long seed, int max_segments, int initial_segments, float segment_radius, float min_segment_distance, float cell_size)
+BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_size, int max_steps, float max_turn, float eat_radius, unsigned long long seed, int max_segments, int initial_segments, float segment_radius, float min_segment_distance, float cell_size, int num_bots, int max_bot_segments)
   : N(num_envs),
     // Support both Headless and RGB with the same observation layout for now
     obs_dim(static_cast<int>(ObservationSize::Headless)),
@@ -45,6 +45,8 @@ BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_siz
     cell_size(cell_size),
     grid_w(static_cast<int>(std::ceil(static_cast<float>(map_size) / cell_size))),
     grid_h(static_cast<int>(std::ceil(static_cast<float>(map_size) / cell_size))),
+    num_bots(num_bots),
+    max_bot_segments(max_bot_segments),
     single_observation_space(BoxSpace(-INFINITY, INFINITY, {static_cast<int>(ObservationSize::Headless)}, "float32")),
     single_action_space(-max_turn, max_turn, {1}, "float32"),
     render_mode(mode),
@@ -63,8 +65,16 @@ BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_siz
     segments_y(static_cast<size_t>(N) * static_cast<size_t>(max_segments), 0.f),
     segments_count(N, 0),
     pending_growth(N, 0),
+    bot_segments_x(static_cast<size_t>(N) * static_cast<size_t>(num_bots) * static_cast<size_t>(max_bot_segments), 0.f),
+    bot_segments_y(static_cast<size_t>(N) * static_cast<size_t>(num_bots) * static_cast<size_t>(max_bot_segments), 0.f),
+    bot_segments_count(static_cast<size_t>(N) * static_cast<size_t>(num_bots), 0),
+    bot_pending_growth(static_cast<size_t>(N) * static_cast<size_t>(num_bots), 0),
+    bot_dir_angle(static_cast<size_t>(N) * static_cast<size_t>(num_bots), 0.f),
+    bot_alive(static_cast<size_t>(N) * static_cast<size_t>(num_bots), 1),
     cell_head(static_cast<size_t>(N) * static_cast<size_t>(grid_w) * static_cast<size_t>(grid_h), -1),
-    next_in_cell(static_cast<size_t>(N) * static_cast<size_t>(max_segments), -1)
+    next_in_cell(static_cast<size_t>(N) * static_cast<size_t>(max_segments), -1),
+    bot_cell_head(static_cast<size_t>(N) * static_cast<size_t>(grid_w) * static_cast<size_t>(grid_h), -1),
+    bot_next_in_cell(static_cast<size_t>(N) * static_cast<size_t>(num_bots) * static_cast<size_t>(max_bot_segments), -1)
 {
     set_seed(seed);
     full_reset();
@@ -84,6 +94,12 @@ void BatchedEnv::full_reset() {
   std::fill(pending_growth.begin(), pending_growth.end(), 0);
   std::fill(cell_head.begin(), cell_head.end(), -1);
   std::fill(next_in_cell.begin(), next_in_cell.end(), -1);
+  std::fill(bot_segments_count.begin(), bot_segments_count.end(), 0);
+  std::fill(bot_pending_growth.begin(), bot_pending_growth.end(), 0);
+  std::fill(bot_dir_angle.begin(), bot_dir_angle.end(), 0.f);
+  std::fill(bot_alive.begin(), bot_alive.end(), 1);
+  std::fill(bot_cell_head.begin(), bot_cell_head.end(), -1);
+  std::fill(bot_next_in_cell.begin(), bot_next_in_cell.end(), -1);
 
   // Initialize each env with randomized head, angle, and food
   for (int i = 0; i < N; ++i) {
@@ -149,6 +165,49 @@ void BatchedEnv::full_reset() {
     }
     food_x[i] = placed ? fx : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
     food_y[i] = placed ? fy : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
+
+    // Initialize bot snakes
+    const int bot_cell_base = i * grid_w * grid_h;
+    for (int c = 0; c < grid_w * grid_h; ++c) bot_cell_head[bot_cell_base + c] = -1;
+    
+    // For each bot snake
+    for (int b = 0; b < num_bots; ++b) {
+      const int bot_idx = i * num_bots + b;
+      const int bot_base_seg = bot_idx * max_bot_segments;
+      
+      // Random position and angle for bot
+      float brx = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i]));
+      float bry = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i]));
+      float bra = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i]));
+      float bhx = brx * static_cast<float>(map_size);
+      float bhy = bry * static_cast<float>(map_size);
+      bot_dir_angle[bot_idx] = bra * kTwoPi;
+      bot_alive[bot_idx] = 1;
+      
+      // Initialize bot segments (start with 3 segments)
+      const int bot_initial_segs = std::min(3, max_bot_segments);
+      bot_segments_count[bot_idx] = bot_initial_segs;
+      bot_segments_x[bot_base_seg + 0] = bhx;
+      bot_segments_y[bot_base_seg + 0] = bhy;
+      for (int s = 1; s < bot_initial_segs; ++s) {
+        float offset = static_cast<float>(s) * min_segment_distance;
+        float ax = std::cos(bot_dir_angle[bot_idx] + kPi) * offset;
+        float ay = std::sin(bot_dir_angle[bot_idx] + kPi) * offset;
+        bot_segments_x[bot_base_seg + s] = bhx + ax;
+        bot_segments_y[bot_base_seg + s] = bhy + ay;
+      }
+      
+      // Add to spatial hash
+      for (int s = 0; s < bot_segments_count[bot_idx]; ++s) {
+        int bcx = static_cast<int>(bot_segments_x[bot_base_seg + s] / cell_size);
+        int bcy = static_cast<int>(bot_segments_y[bot_base_seg + s] / cell_size);
+        if (bcx < 0) bcx = 0; if (bcx >= grid_w) bcx = grid_w - 1;
+        if (bcy < 0) bcy = 0; if (bcy >= grid_h) bcy = grid_h - 1;
+        int bcell_idx = bot_cell_base + bcy * grid_w + bcx;
+        bot_next_in_cell[bot_base_seg + s] = bot_cell_head[bcell_idx];
+        bot_cell_head[bcell_idx] = bot_base_seg + s;
+      }
+    }
 
     // Fill observation (7D)
     if (obs_dim >= 1) {
@@ -237,6 +296,50 @@ void BatchedEnv::reset(const uint8_t* mask) {
       }
       food_x[i] = placed ? fx : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
       food_y[i] = placed ? fy : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
+
+      // Re-initialize bot snakes
+      const int bot_cell_base = i * grid_w * grid_h;
+      for (int c = 0; c < grid_w * grid_h; ++c) bot_cell_head[bot_cell_base + c] = -1;
+      
+      // For each bot snake
+      for (int b = 0; b < num_bots; ++b) {
+        const int bot_idx = i * num_bots + b;
+        const int bot_base_seg = bot_idx * max_bot_segments;
+        
+        // Random position and angle for bot
+        float brx = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i]));
+        float bry = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i]));
+        float bra = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i]));
+        float bhx = brx * static_cast<float>(map_size);
+        float bhy = bry * static_cast<float>(map_size);
+        bot_dir_angle[bot_idx] = bra * kTwoPi;
+        bot_alive[bot_idx] = 1;
+        bot_pending_growth[bot_idx] = 0;
+        
+        // Initialize bot segments (start with 3 segments)
+        const int bot_initial_segs = std::min(3, max_bot_segments);
+        bot_segments_count[bot_idx] = bot_initial_segs;
+        bot_segments_x[bot_base_seg + 0] = bhx;
+        bot_segments_y[bot_base_seg + 0] = bhy;
+        for (int s = 1; s < bot_initial_segs; ++s) {
+          float offset = static_cast<float>(s) * min_segment_distance;
+          float ax = std::cos(bot_dir_angle[bot_idx] + kPi) * offset;
+          float ay = std::sin(bot_dir_angle[bot_idx] + kPi) * offset;
+          bot_segments_x[bot_base_seg + s] = bhx + ax;
+          bot_segments_y[bot_base_seg + s] = bhy + ay;
+        }
+        
+        // Add to spatial hash
+        for (int s = 0; s < bot_segments_count[bot_idx]; ++s) {
+          int bcx = static_cast<int>(bot_segments_x[bot_base_seg + s] / cell_size);
+          int bcy = static_cast<int>(bot_segments_y[bot_base_seg + s] / cell_size);
+          if (bcx < 0) bcx = 0; if (bcx >= grid_w) bcx = grid_w - 1;
+          if (bcy < 0) bcy = 0; if (bcy >= grid_h) bcy = grid_h - 1;
+          int bcell_idx = bot_cell_base + bcy * grid_w + bcx;
+          bot_next_in_cell[bot_base_seg + s] = bot_cell_head[bcell_idx];
+          bot_cell_head[bcell_idx] = bot_base_seg + s;
+        }
+      }
 
       if (obs_dim >= 1) {
           const int base = i * obs_dim;
@@ -395,6 +498,125 @@ void BatchedEnv::step(const float* actions) {
       terminated[i] = 1;
     }
 
+    // Bot snakes: AI and movement
+    const int bot_cell_base = i * grid_w * grid_h;
+    for (int c = 0; c < grid_w * grid_h; ++c) bot_cell_head[bot_cell_base + c] = -1;
+    
+    // For each bot snake
+    for (int b = 0; b < num_bots; ++b) {
+      const int bot_idx = i * num_bots + b;
+      if (!bot_alive[bot_idx]) continue;
+      
+      const int bot_base_seg = bot_idx * max_bot_segments;
+      float bot_hx = bot_segments_x[bot_base_seg + 0];
+      float bot_hy = bot_segments_y[bot_base_seg + 0];
+      
+      // Simple AI: turn towards food
+      float bot_dx = food_x[i] - bot_hx;
+      float bot_dy = food_y[i] - bot_hy;
+      float target_angle = std::atan2(bot_dy, bot_dx);
+      float angle_diff = target_angle - bot_dir_angle[bot_idx];
+      // Normalize angle difference to [-pi, pi]
+      while (angle_diff > kPi) angle_diff -= kTwoPi;
+      while (angle_diff < -kPi) angle_diff += kTwoPi;
+      // Clamp turn
+      float bot_turn = angle_diff;
+      if (bot_turn > max_turn * 0.7f) bot_turn = max_turn * 0.7f;
+      if (bot_turn < -max_turn * 0.7f) bot_turn = -max_turn * 0.7f;
+      bot_dir_angle[bot_idx] = wrap_angle_0_2pi(bot_dir_angle[bot_idx] + bot_turn);
+      
+      // Move bot head
+      bot_hx = bot_hx + std::cos(bot_dir_angle[bot_idx]) * static_cast<float>(step_size);
+      bot_hy = bot_hy + std::sin(bot_dir_angle[bot_idx]) * static_cast<float>(step_size);
+      
+      // Check bounds
+      if (bot_hx < 0 || bot_hx >= map_size || bot_hy < 0 || bot_hy >= map_size) {
+        bot_alive[bot_idx] = 0;
+        continue;
+      }
+      
+      bot_segments_x[bot_base_seg + 0] = bot_hx;
+      bot_segments_y[bot_base_seg + 0] = bot_hy;
+      
+      // Follow segments
+      const int bot_segs = bot_segments_count[bot_idx];
+      for (int s = 1; s < bot_segs; ++s) {
+        float tx = bot_segments_x[bot_base_seg + (s - 1)];
+        float ty = bot_segments_y[bot_base_seg + (s - 1)];
+        float cx = bot_segments_x[bot_base_seg + s];
+        float cy = bot_segments_y[bot_base_seg + s];
+        float dxs = tx - cx;
+        float dys = ty - cy;
+        float d = std::sqrt(dxs*dxs + dys*dys);
+        if (d > min_segment_distance && d > 0.0f) {
+          float move_ratio = static_cast<float>(step_size) / d;
+          bot_segments_x[bot_base_seg + s] = cx + dxs * move_ratio;
+          bot_segments_y[bot_base_seg + s] = cy + dys * move_ratio;
+        }
+      }
+      
+      // Add bot to spatial hash
+      for (int s = 0; s < bot_segs; ++s) {
+        int bcx = static_cast<int>(bot_segments_x[bot_base_seg + s] / cell_size);
+        int bcy = static_cast<int>(bot_segments_y[bot_base_seg + s] / cell_size);
+        if (bcx < 0) bcx = 0; if (bcx >= grid_w) bcx = grid_w - 1;
+        if (bcy < 0) bcy = 0; if (bcy >= grid_h) bcy = grid_h - 1;
+        int bcell_idx = bot_cell_base + bcy * grid_w + bcx;
+        bot_next_in_cell[bot_base_seg + s] = bot_cell_head[bcell_idx];
+        bot_cell_head[bcell_idx] = bot_base_seg + s;
+      }
+      
+      // Bot eating logic (can steal player's food)
+      float bot_food_dx = food_x[i] - bot_hx;
+      float bot_food_dy = food_y[i] - bot_hy;
+      float bot_food_dist = std::sqrt(bot_food_dx*bot_food_dx + bot_food_dy*bot_food_dy);
+      if (bot_food_dist <= eat_radius) {
+        bot_pending_growth[bot_idx] += 1;
+        // Respawn food
+        float fx = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
+        float fy = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
+        food_x[i] = fx;
+        food_y[i] = fy;
+        // Update player's food distance
+        dx = food_x[i] - hx; dy = food_y[i] - hy; dist = std::sqrt(dx*dx + dy*dy);
+      }
+      
+      // Bot growth
+      if (bot_pending_growth[bot_idx] > 0 && bot_segments_count[bot_idx] < max_bot_segments) {
+        int sc = bot_segments_count[bot_idx];
+        float lx = bot_segments_x[bot_base_seg + (sc - 1)];
+        float ly = bot_segments_y[bot_base_seg + (sc - 1)];
+        float lx2 = (sc >= 2) ? bot_segments_x[bot_base_seg + (sc - 2)] : (lx - std::cos(bot_dir_angle[bot_idx]) * 1.0f);
+        float ly2 = (sc >= 2) ? bot_segments_y[bot_base_seg + (sc - 2)] : (ly - std::sin(bot_dir_angle[bot_idx]) * 1.0f);
+        float tx = lx - lx2;
+        float ty = ly - ly2;
+        float td = std::sqrt(tx*tx + ty*ty);
+        if (td > 0.0f) { tx /= td; ty /= td; }
+        bot_segments_x[bot_base_seg + sc] = lx + tx * min_segment_distance;
+        bot_segments_y[bot_base_seg + sc] = ly + ty * min_segment_distance;
+        bot_segments_count[bot_idx] = sc + 1;
+        bot_pending_growth[bot_idx] -= 1;
+      }
+    }
+    
+    // Check collision between player head and bot snakes
+    for (int oy = -1; oy <= 1 && !terminated[i]; ++oy) {
+      for (int ox = -1; ox <= 1 && !terminated[i]; ++ox) {
+        int ncx = head_cx + ox, ncy = head_cy + oy;
+        if (ncx < 0 || ncx >= grid_w || ncy < 0 || ncy >= grid_h) continue;
+        int bot_ptr = bot_cell_head[bot_cell_base + ncy * grid_w + ncx];
+        while (bot_ptr != -1) {
+          float ddx = bot_segments_x[bot_ptr] - hx;
+          float ddy = bot_segments_y[bot_ptr] - hy;
+          if (std::sqrt(ddx*ddx + ddy*ddy) < collide_r) {
+            terminated[i] = 1;
+            break;
+          }
+          bot_ptr = bot_next_in_cell[bot_ptr];
+        }
+      }
+    }
+
     // Steps and truncation
     steps_since_reset[i] += 1;
     if (steps_since_reset[i] >= max_steps) {
@@ -460,14 +682,27 @@ void BatchedEnv::render_rgb() {
         }
       }
     };
-    // Draw body segments
+    // Draw bot snakes first (behind player)
+    for (int b = 0; b < num_bots; ++b) {
+      const int bot_idx = i * num_bots + b;
+      if (!bot_alive[bot_idx]) continue;
+      const int bot_base_seg = bot_idx * max_bot_segments;
+      // Draw bot body (orange/yellow)
+      for (int s = 0; s < bot_segments_count[bot_idx]; ++s) {
+        draw_disk(bot_segments_x[bot_base_seg + s], bot_segments_y[bot_base_seg + s], segment_radius, 200, 150, 60);
+      }
+      // Draw bot head brighter
+      draw_disk(bot_segments_x[bot_base_seg + 0], bot_segments_y[bot_base_seg + 0], segment_radius * 1.1f, 255, 180, 40);
+    }
+    
+    // Draw player body segments (green)
     const int base_seg = i * max_segments;
     for (int s = 0; s < segments_count[i]; ++s) {
       draw_disk(segments_x[base_seg + s], segments_y[base_seg + s], segment_radius, 80, 200, 80);
     }
-    // Draw head brighter
+    // Draw player head brighter
     draw_disk(segments_x[base_seg + 0], segments_y[base_seg + 0], segment_radius * 1.1f, 40, 255, 40);
-    // Draw food
+    // Draw food (red)
     draw_disk(food_x[i], food_y[i], eat_radius, 200, 60, 60);
   }
 }

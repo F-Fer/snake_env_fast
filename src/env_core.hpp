@@ -51,13 +51,15 @@ public:
     const int max_steps; // truncation after this many steps since reset
     const float max_turn; // per-step max turn in radians (delta heading)
     const float eat_radius; // distance threshold to eat food
-    const int max_segments; // capacity of segments per env
-    const int initial_segments; // starting number of segments
+    const int max_segments; // capacity of segments per env (player)
+    const int initial_segments; // starting number of segments (player)
     const float segment_radius; // for collisions and rendering
     const float min_segment_distance; // target spacing between segments
     const float cell_size; // spatial hash cell size
     const int grid_w; // spatial hash width
     const int grid_h; // spatial hash height
+    const int num_bots; // number of bot snakes per env
+    const int max_bot_segments; // capacity of segments per bot (smaller than player)
 
     // Space metadata (single env)
     BoxSpace single_observation_space;
@@ -90,9 +92,19 @@ public:
     std::vector<int>   segments_count; // [N]
     std::vector<int>   pending_growth; // [N]
 
+    // Bot snakes (multiple per env)
+    std::vector<float> bot_segments_x; // [N * num_bots * max_bot_segments]
+    std::vector<float> bot_segments_y; // [N * num_bots * max_bot_segments]
+    std::vector<int>   bot_segments_count; // [N * num_bots]
+    std::vector<int>   bot_pending_growth; // [N * num_bots]
+    std::vector<float> bot_dir_angle; // [N * num_bots]
+    std::vector<uint8_t> bot_alive; // [N * num_bots], 0 if dead, 1 if alive
+
     // Spatial hash for collision/queries
     std::vector<int> cell_head;   // [N * grid_w * grid_h], -1 for empty
     std::vector<int> next_in_cell; // [N * max_segments], next index or -1
+    std::vector<int> bot_cell_head; // [N * grid_w * grid_h], -1 for empty (separate for bots)
+    std::vector<int> bot_next_in_cell; // [N * num_bots * max_bot_segments], next index or -1
 
     // Actions are a single angle per env; act_dim is fixed to 1.
     explicit BatchedEnv(
@@ -108,7 +120,9 @@ public:
         int initial_segments = 4,
         float segment_radius = 2.0f,
         float min_segment_distance = 3.0f,
-        float cell_size = 3.0f
+        float cell_size = 3.0f,
+        int num_bots = 3,
+        int max_bot_segments = 12
     );
 
     // Disallow copying (large buffers); allow moving if needed (default okay).
