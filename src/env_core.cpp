@@ -28,15 +28,6 @@ static inline float wrap_angle_0_2pi(float a) {
   return a;
 }
 
-static inline float wrap_coord_0_map(float x, int map_size) {
-  float m = static_cast<float>(map_size);
-  if (x >= m || x < 0.0f) {
-    x = std::fmod(x, m);
-    if (x < 0.0f) x += m;
-  }
-  return x;
-}
-
 BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_size, int max_steps, float max_turn, float eat_radius, unsigned long long seed, int max_segments, int initial_segments, float segment_radius, float min_segment_distance, float cell_size)
   : N(num_envs),
     // Support both Headless and RGB with the same observation layout for now
@@ -118,8 +109,8 @@ void BatchedEnv::full_reset() {
       float offset = static_cast<float>(s) * min_segment_distance;
       float ax = std::cos(dir_angle[i] + kPi) * offset;
       float ay = std::sin(dir_angle[i] + kPi) * offset;
-      segments_x[base_seg + s] = wrap_coord_0_map(hx + ax, map_size);
-      segments_y[base_seg + s] = wrap_coord_0_map(hy + ay, map_size);
+      segments_x[base_seg + s] = hx + ax;
+      segments_y[base_seg + s] = hy + ay;
     }
 
     // Build spatial hash for this env
@@ -205,8 +196,8 @@ void BatchedEnv::reset(const uint8_t* mask) {
         float offset = static_cast<float>(s) * min_segment_distance;
         float ax = (s == 0 ? 0.0f : std::cos(dir_angle[i] + kPi) * offset);
         float ay = (s == 0 ? 0.0f : std::sin(dir_angle[i] + kPi) * offset);
-        segments_x[base_seg + s] = wrap_coord_0_map(hx + ax, map_size);
-        segments_y[base_seg + s] = wrap_coord_0_map(hy + ay, map_size);
+        segments_x[base_seg + s] = hx + ax;
+        segments_y[base_seg + s] = hy + ay;
       }
       // Rebuild hash for this env
       const int cell_base = i * grid_w * grid_h;
@@ -308,8 +299,8 @@ void BatchedEnv::step(const float* actions) {
       float d = std::sqrt(dxs*dxs + dys*dys);
       if (d > min_segment_distance && d > 0.0f) {
         float move_ratio = static_cast<float>(step_size) / d;
-        segments_x[base_seg + s] = wrap_coord_0_map(cx + dxs * move_ratio, map_size);
-        segments_y[base_seg + s] = wrap_coord_0_map(cy + dys * move_ratio, map_size);
+        segments_x[base_seg + s] = cx + dxs * move_ratio;
+        segments_y[base_seg + s] = cy + dys * move_ratio;
       }
     }
 
@@ -377,8 +368,8 @@ void BatchedEnv::step(const float* actions) {
       float ty = ly - ly2;
       float td = std::sqrt(tx*tx + ty*ty);
       if (td > 0.0f) { tx /= td; ty /= td; }
-      segments_x[base_seg + sc] = wrap_coord_0_map(lx + tx * min_segment_distance, map_size);
-      segments_y[base_seg + sc] = wrap_coord_0_map(ly + ty * min_segment_distance, map_size);
+      segments_x[base_seg + sc] = lx + tx * min_segment_distance;
+      segments_y[base_seg + sc] = ly + ty * min_segment_distance;
       segments_count[i] = sc + 1;
       pending_growth[i] -= 1;
     }
