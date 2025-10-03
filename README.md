@@ -52,10 +52,33 @@ Key parameters:
 - `map_size`: Square map size (default: 100)
 - `mode`: `RenderMode.Headless` or `RenderMode.RGB`
 
+### BatchedEnv Parameters
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `num_envs` | int | required | Number of environments stepped in parallel |
+| `mode` | `RenderMode` | `RenderMode::Headless` | Observation/rendering mode |
+| `map_size` | int | 100 | World bounds (square) |
+| `step_size` | int | 1 | Units the head advances per step |
+| `max_steps` | int | 1000 | Auto-truncate episode after this many steps |
+| `max_turn` | float | π/4 | Maximum steering delta per step (radians) |
+| `eat_radius` | float | 1.0 | Distance threshold to consume food |
+| `seed` | uint64 | 0 | Base RNG seed (env _i_ uses `seed + i`) |
+| `max_segments` | int | 64 | Capacity of player snake segments |
+| `initial_segments` | int | 4 | Starting player length |
+| `segment_radius` | float | 2.0 | Collision/render radius of segments |
+| `min_segment_distance` | float | 3.0 | Target spacing between consecutive segments |
+| `cell_size` | float | 3.0 | Spatial hash cell width/height |
+| `num_bots` | int | 3 | Bot snakes per environment |
+| `max_bot_segments` | int | 12 | Capacity of each bot snake |
+| `num_food` | int | 5 | Food items maintained per environment |
+
+> All parameters are exposed via `snake_env_fast._fastenv.BatchedEnv` and forwarded by the `FastVectorEnv` wrapper. Floating-point defaults are expressed in world units.
+
 ## TODO
 
-- More Food items (multiple spawn points)
 - Larger map support
 - RGB rendering focus on snake head
 - More realistic rendering
-- Bot-vs-bot collision
+- Make bots die when they collide with one another
+- Respawn bots if they die

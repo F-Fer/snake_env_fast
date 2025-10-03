@@ -29,70 +29,6 @@ static inline float wrap_angle_0_2pi(float a) {
   return a;
 }
 
-void BatchedEnv::place_food(int env_idx, int food_slot) {
-    if (num_food <= 0) {
-        return;
-    }
-    const int cell_base = env_idx * grid_w * grid_h;
-    const int food_base = env_idx * num_food;
-    const int base_seg = env_idx * max_segments;
-    const int bot_global_idx_base = env_idx * num_bots;
-
-    float fx = 0.f, fy = 0.f;
-    bool placed = false;
-    for (int tries = 0; tries < 128 && !placed; ++tries) {
-        fx = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[env_idx])) * static_cast<float>(map_size);
-        fy = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[env_idx])) * static_cast<float>(map_size);
-        int cx = static_cast<int>(fx / cell_size);
-        int cy = static_cast<int>(fy / cell_size);
-        if (cx < 0) cx = 0; else if (cx >= grid_w) cx = grid_w - 1;
-        if (cy < 0) cy = 0; else if (cy >= grid_h) cy = grid_h - 1;
-        bool ok = true;
-        // Check player snake
-        for (int oy = -1; oy <= 1 && ok; ++oy) {
-            for (int ox = -1; ox <= 1 && ok; ++ox) {
-                int ncx = cx + ox;
-                int ncy = cy + oy;
-                if (ncx < 0 || ncx >= grid_w || ncy < 0 || ncy >= grid_h) continue;
-                int head_idx = cell_head[cell_base + ncy * grid_w + ncx];
-                while (head_idx != -1) {
-                    float dx = segments_x[head_idx] - fx;
-                    float dy = segments_y[head_idx] - fy;
-                    if (std::sqrt(dx*dx + dy*dy) < (segment_radius + eat_radius)) { ok = false; break; }
-                    head_idx = next_in_cell[head_idx];
-                }
-            }
-        }
-        // Check bot snakes if still ok
-        if (ok && num_bots > 0) {
-            const int bot_base_seg = env_idx * num_bots * max_bot_segments;
-            for (int b = 0; b < num_bots && ok; ++b) {
-                const int bot_global_idx = bot_global_idx_base + b;
-                if (!bot_alive[bot_global_idx]) continue;
-                const int bot_seg_base = bot_base_seg + b * max_bot_segments;
-                const int bot_count = bot_segments_count[bot_global_idx];
-                for (int s = 0; s < bot_count; ++s) {
-                    float dx = bot_segments_x[bot_seg_base + s] - fx;
-                    float dy = bot_segments_y[bot_seg_base + s] - fy;
-                    if (std::sqrt(dx*dx + dy*dy) < (segment_radius + eat_radius)) { ok = false; break; }
-                }
-            }
-        }
-        // Avoid overlapping other foods
-        if (ok) {
-            for (int f = 0; f < num_food; ++f) {
-                if (f == food_slot) continue;
-                float dx = food_x[food_base + f] - fx;
-                float dy = food_y[food_base + f] - fy;
-                if (std::sqrt(dx*dx + dy*dy) < eat_radius * 2.f) { ok = false; break; }
-            }
-        }
-        if (ok) placed = true;
-    }
-    food_x[food_base + food_slot] = placed ? fx : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[env_idx])) * static_cast<float>(map_size);
-    food_y[food_base + food_slot] = placed ? fy : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[env_idx])) * static_cast<float>(map_size);
-}
-
 BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_size, int max_steps, float max_turn, float eat_radius, unsigned long long seed, int max_segments, int initial_segments, float segment_radius, float min_segment_distance, float cell_size, int num_bots, int max_bot_segments, int num_food)
   : N(num_envs),
     // Support both Headless and RGB with the same observation layout for now
@@ -144,6 +80,70 @@ BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_siz
 {
     set_seed(seed);
     full_reset();
+}
+
+void BatchedEnv::place_food(int env_idx, int food_slot) {
+  if (num_food <= 0) {
+      return;
+  }
+  const int cell_base = env_idx * grid_w * grid_h;
+  const int food_base = env_idx * num_food;
+  const int base_seg = env_idx * max_segments;
+  const int bot_global_idx_base = env_idx * num_bots;
+
+  float fx = 0.f, fy = 0.f;
+  bool placed = false;
+  for (int tries = 0; tries < 128 && !placed; ++tries) {
+      fx = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[env_idx])) * static_cast<float>(map_size);
+      fy = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[env_idx])) * static_cast<float>(map_size);
+      int cx = static_cast<int>(fx / cell_size);
+      int cy = static_cast<int>(fy / cell_size);
+      if (cx < 0) cx = 0; else if (cx >= grid_w) cx = grid_w - 1;
+      if (cy < 0) cy = 0; else if (cy >= grid_h) cy = grid_h - 1;
+      bool ok = true;
+      // Check player snake
+      for (int oy = -1; oy <= 1 && ok; ++oy) {
+          for (int ox = -1; ox <= 1 && ok; ++ox) {
+              int ncx = cx + ox;
+              int ncy = cy + oy;
+              if (ncx < 0 || ncx >= grid_w || ncy < 0 || ncy >= grid_h) continue;
+              int head_idx = cell_head[cell_base + ncy * grid_w + ncx];
+              while (head_idx != -1) {
+                  float dx = segments_x[head_idx] - fx;
+                  float dy = segments_y[head_idx] - fy;
+                  if (std::sqrt(dx*dx + dy*dy) < (segment_radius + eat_radius)) { ok = false; break; }
+                  head_idx = next_in_cell[head_idx];
+              }
+          }
+      }
+      // Check bot snakes if still ok
+      if (ok && num_bots > 0) {
+          const int bot_base_seg = env_idx * num_bots * max_bot_segments;
+          for (int b = 0; b < num_bots && ok; ++b) {
+              const int bot_global_idx = bot_global_idx_base + b;
+              if (!bot_alive[bot_global_idx]) continue;
+              const int bot_seg_base = bot_base_seg + b * max_bot_segments;
+              const int bot_count = bot_segments_count[bot_global_idx];
+              for (int s = 0; s < bot_count; ++s) {
+                  float dx = bot_segments_x[bot_seg_base + s] - fx;
+                  float dy = bot_segments_y[bot_seg_base + s] - fy;
+                  if (std::sqrt(dx*dx + dy*dy) < (segment_radius + eat_radius)) { ok = false; break; }
+              }
+          }
+      }
+      // Avoid overlapping other foods
+      if (ok) {
+          for (int f = 0; f < num_food; ++f) {
+              if (f == food_slot) continue;
+              float dx = food_x[food_base + f] - fx;
+              float dy = food_y[food_base + f] - fy;
+              if (std::sqrt(dx*dx + dy*dy) < eat_radius * 2.f) { ok = false; break; }
+          }
+      }
+      if (ok) placed = true;
+  }
+  food_x[food_base + food_slot] = placed ? fx : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[env_idx])) * static_cast<float>(map_size);
+  food_y[food_base + food_slot] = placed ? fy : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[env_idx])) * static_cast<float>(map_size);
 }
 
 void BatchedEnv::full_reset() {
