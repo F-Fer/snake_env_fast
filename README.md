@@ -2,18 +2,6 @@
 
 A high-performance, parallel Snake environment implemented in C++ with Python bindings, designed for reinforcement learning.
 
-## Features
-
-✅ **Bot Snakes** - Configurable AI opponents that compete for food
-- Default: 3 bots with max 12 segments each (memory-efficient)
-- Simple food-seeking AI
-- Collision detection with player
-- Orange/yellow rendering in RGB mode
-
-🚀 **Batched Parallel Execution** - Run thousands of environments simultaneously
-🎮 **Vector Observations** - 7D state: (head_x, head_y, dir_angle, snake_len, food_x, food_y, food_dist)
-🎨 **RGB Rendering** - 84×84×3 visual output for each environment
-
 ## Build
 
 ```bash
@@ -21,23 +9,18 @@ A high-performance, parallel Snake environment implemented in C++ with Python bi
 uv pip install scikit-build-core pybind11
 
 # Build and install
-uv pip install -e . --no-build-isolation
+uv --refresh pip install -e .
 ```
 
 ## Quick Start
 
 ```python
-from snake_env_fast._fastenv import BatchedEnv, RenderMode
+from snake_env_fast.gym_wrapper import FastVectorEnv
 import numpy as np
 
-# Create environment with bot snakes
-env = BatchedEnv(
-    num_envs=4,
-    mode=RenderMode.RGB,
-    num_bots=5,           # 5 bot opponents
-    max_bot_segments=12,  # Max segments per bot
-    map_size=100
-)
+# Environment setup
+env = FastVectorEnv(1, render_mode="rgb_array")
+obs, _ = env.reset()
 
 # Step through environment
 for _ in range(100):
@@ -71,7 +54,6 @@ Key parameters:
 
 ## TODO
 
-- ✅ Bot snakes (COMPLETED)
 - More Food items (multiple spawn points)
 - Larger map support
 - RGB rendering focus on snake head

@@ -1,6 +1,7 @@
 from snake_env_fast.gym_wrapper import FastVectorEnv
 import cv2
 import numpy as np
+import time
 
 # Global mouse position
 mouse_x, mouse_y = 0, 0
@@ -85,5 +86,6 @@ while True:
     elif key == ord('r'):
         obs, _ = env.reset()
         print("Manual reset")
+    time.sleep(0.1)
 
 cv2.destroyAllWindows()

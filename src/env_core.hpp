@@ -60,6 +60,7 @@ public:
     const int grid_h; // spatial hash height
     const int num_bots; // number of bot snakes per env
     const int max_bot_segments; // capacity of segments per bot (smaller than player)
+    const int num_food; // number of food items per env
 
     // Space metadata (single env)
     BoxSpace single_observation_space;
@@ -77,8 +78,8 @@ public:
     // Minimal internal state 
     std::vector<float> dir_angle;  // [N] in range [0, 2*pi]
     std::vector<int>   snake_len;  // [N] starts from 3
-    std::vector<float> food_x;     // [N]
-    std::vector<float> food_y;     // [N]
+    std::vector<float> food_x;     // [N * num_food]
+    std::vector<float> food_y;     // [N * num_food]
     std::vector<int>   steps_since_reset; // [N]
 
     std::vector<uint8_t> rgb_image; // [N * H * W * 3] if render_mode is RenderMode::RGB
@@ -114,15 +115,16 @@ public:
         int step_size = 1,
         int max_steps = 1000,
         float max_turn = kPi / 4.0f,
-        float eat_radius = 1.0f,
+        float eat_radius = 0.5f,
         unsigned long long seed = 0ULL,
         int max_segments = 64,
         int initial_segments = 4,
-        float segment_radius = 2.0f,
-        float min_segment_distance = 3.0f,
+        float segment_radius = 1.0f,
+        float min_segment_distance = 1.5f,
         float cell_size = 3.0f,
         int num_bots = 3,
-        int max_bot_segments = 12
+        int max_bot_segments = 12,
+        int num_food = 5
     );
 
     // Disallow copying (large buffers); allow moving if needed (default okay).
@@ -143,4 +145,6 @@ public:
 
     // Render RGB frames into rgb_image if render_mode == RenderMode::RGB
     void render_rgb();
+private:
+    void place_food(int env_idx, int food_slot);
 };

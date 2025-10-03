@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <iostream>
 #include <cstdint>
+#include <limits>
 
 // Simple xorshift64* RNG
 static inline uint64_t xorshift64star(uint64_t& s) {
@@ -28,7 +29,71 @@ static inline float wrap_angle_0_2pi(float a) {
   return a;
 }
 
-BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_size, int max_steps, float max_turn, float eat_radius, unsigned long long seed, int max_segments, int initial_segments, float segment_radius, float min_segment_distance, float cell_size, int num_bots, int max_bot_segments)
+void BatchedEnv::place_food(int env_idx, int food_slot) {
+    if (num_food <= 0) {
+        return;
+    }
+    const int cell_base = env_idx * grid_w * grid_h;
+    const int food_base = env_idx * num_food;
+    const int base_seg = env_idx * max_segments;
+    const int bot_global_idx_base = env_idx * num_bots;
+
+    float fx = 0.f, fy = 0.f;
+    bool placed = false;
+    for (int tries = 0; tries < 128 && !placed; ++tries) {
+        fx = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[env_idx])) * static_cast<float>(map_size);
+        fy = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[env_idx])) * static_cast<float>(map_size);
+        int cx = static_cast<int>(fx / cell_size);
+        int cy = static_cast<int>(fy / cell_size);
+        if (cx < 0) cx = 0; else if (cx >= grid_w) cx = grid_w - 1;
+        if (cy < 0) cy = 0; else if (cy >= grid_h) cy = grid_h - 1;
+        bool ok = true;
+        // Check player snake
+        for (int oy = -1; oy <= 1 && ok; ++oy) {
+            for (int ox = -1; ox <= 1 && ok; ++ox) {
+                int ncx = cx + ox;
+                int ncy = cy + oy;
+                if (ncx < 0 || ncx >= grid_w || ncy < 0 || ncy >= grid_h) continue;
+                int head_idx = cell_head[cell_base + ncy * grid_w + ncx];
+                while (head_idx != -1) {
+                    float dx = segments_x[head_idx] - fx;
+                    float dy = segments_y[head_idx] - fy;
+                    if (std::sqrt(dx*dx + dy*dy) < (segment_radius + eat_radius)) { ok = false; break; }
+                    head_idx = next_in_cell[head_idx];
+                }
+            }
+        }
+        // Check bot snakes if still ok
+        if (ok && num_bots > 0) {
+            const int bot_base_seg = env_idx * num_bots * max_bot_segments;
+            for (int b = 0; b < num_bots && ok; ++b) {
+                const int bot_global_idx = bot_global_idx_base + b;
+                if (!bot_alive[bot_global_idx]) continue;
+                const int bot_seg_base = bot_base_seg + b * max_bot_segments;
+                const int bot_count = bot_segments_count[bot_global_idx];
+                for (int s = 0; s < bot_count; ++s) {
+                    float dx = bot_segments_x[bot_seg_base + s] - fx;
+                    float dy = bot_segments_y[bot_seg_base + s] - fy;
+                    if (std::sqrt(dx*dx + dy*dy) < (segment_radius + eat_radius)) { ok = false; break; }
+                }
+            }
+        }
+        // Avoid overlapping other foods
+        if (ok) {
+            for (int f = 0; f < num_food; ++f) {
+                if (f == food_slot) continue;
+                float dx = food_x[food_base + f] - fx;
+                float dy = food_y[food_base + f] - fy;
+                if (std::sqrt(dx*dx + dy*dy) < eat_radius * 2.f) { ok = false; break; }
+            }
+        }
+        if (ok) placed = true;
+    }
+    food_x[food_base + food_slot] = placed ? fx : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[env_idx])) * static_cast<float>(map_size);
+    food_y[food_base + food_slot] = placed ? fy : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[env_idx])) * static_cast<float>(map_size);
+}
+
+BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_size, int max_steps, float max_turn, float eat_radius, unsigned long long seed, int max_segments, int initial_segments, float segment_radius, float min_segment_distance, float cell_size, int num_bots, int max_bot_segments, int num_food)
   : N(num_envs),
     // Support both Headless and RGB with the same observation layout for now
     obs_dim(static_cast<int>(ObservationSize::Headless)),
@@ -47,6 +112,7 @@ BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_siz
     grid_h(static_cast<int>(std::ceil(static_cast<float>(map_size) / cell_size))),
     num_bots(num_bots),
     max_bot_segments(max_bot_segments),
+    num_food(std::max(0, num_food)),
     single_observation_space(BoxSpace(-INFINITY, INFINITY, {static_cast<int>(ObservationSize::Headless)}, "float32")),
     single_action_space(-max_turn, max_turn, {1}, "float32"),
     render_mode(mode),
@@ -56,8 +122,8 @@ BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_siz
     truncated(N, 0),
     dir_angle(N, 0.f),
     snake_len(N, 1),
-    food_x(N, 0.f),
-    food_y(N, 0.f),
+    food_x(static_cast<size_t>(N) * static_cast<size_t>(num_food), 0.f),
+    food_y(static_cast<size_t>(N) * static_cast<size_t>(num_food), 0.f),
     steps_since_reset(N, 0),
     rgb_image(mode == RenderMode::RGB ? N * 84 * 84 * 3 : 0, 0),
     rng_state(N, 0ULL),
@@ -101,7 +167,7 @@ void BatchedEnv::full_reset() {
   std::fill(bot_cell_head.begin(), bot_cell_head.end(), -1);
   std::fill(bot_next_in_cell.begin(), bot_next_in_cell.end(), -1);
 
-  // Initialize each env with randomized head, angle, and food
+  // Initialize each env with randomized head, bots, and food
   for (int i = 0; i < N; ++i) {
     float rx = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i]));
     float ry = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i]));
@@ -135,36 +201,6 @@ void BatchedEnv::full_reset() {
       next_in_cell[base_seg + s] = cell_head[cell_idx];
       cell_head[cell_idx] = base_seg + s;
     }
-
-    // Spawn food away from snake (rejection sampling)
-    float fx = 0.f, fy = 0.f;
-    bool placed = false;
-    for (int tries = 0; tries < 64 && !placed; ++tries) {
-      fx = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
-      fy = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
-      int cx = static_cast<int>(fx / cell_size);
-      int cy = static_cast<int>(fy / cell_size);
-      if (cx < 0) cx = 0; if (cx >= grid_w) cx = grid_w - 1;
-      if (cy < 0) cy = 0; if (cy >= grid_h) cy = grid_h - 1;
-      bool ok = true;
-      for (int oy = -1; oy <= 1 && ok; ++oy) {
-        for (int ox = -1; ox <= 1 && ok; ++ox) {
-          int ncx = cx + ox, ncy = cy + oy;
-          if (ncx < 0 || ncx >= grid_w || ncy < 0 || ncy >= grid_h) continue;
-          int head_idx = cell_head[cell_base + ncy * grid_w + ncx];
-          while (head_idx != -1) {
-            int sidx = head_idx - base_seg;
-            float dx = segments_x[base_seg + sidx] - fx;
-            float dy = segments_y[base_seg + sidx] - fy;
-            if (std::sqrt(dx*dx + dy*dy) < (segment_radius + eat_radius)) { ok = false; break; }
-            head_idx = next_in_cell[head_idx];
-          }
-        }
-      }
-      if (ok) placed = true;
-    }
-    food_x[i] = placed ? fx : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
-    food_y[i] = placed ? fy : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
 
     // Initialize bot snakes
     const int bot_cell_base = i * grid_w * grid_h;
@@ -209,22 +245,48 @@ void BatchedEnv::full_reset() {
       }
     }
 
+    // Spawn multiple food items
+    for (int f = 0; f < num_food; ++f) {
+      place_food(i, f);
+    }
+
     // Fill observation (7D)
     if (obs_dim >= 1) {
       const int base = i * obs_dim;
       const int base_seg = i * max_segments;
       const float hx = segments_x[base_seg + 0];
       const float hy = segments_y[base_seg + 0];
-      const float dx = food_x[i] - hx;
-      const float dy = food_y[i] - hy;
-      const float dist = std::sqrt(dx*dx + dy*dy);
+      float nearest_fx = 0.f;
+      float nearest_fy = 0.f;
+      float nearest_dist = 0.f;
+      if (num_food > 0) {
+        nearest_dist = std::numeric_limits<float>::infinity();
+        const int food_base = i * num_food;
+        for (int f = 0; f < num_food; ++f) {
+          const float fx = food_x[food_base + f];
+          const float fy = food_y[food_base + f];
+          const float dfx = fx - hx;
+          const float dfy = fy - hy;
+          const float d = std::sqrt(dfx*dfx + dfy*dfy);
+          if (d < nearest_dist) {
+            nearest_dist = d;
+            nearest_fx = fx;
+            nearest_fy = fy;
+          }
+        }
+        if (!std::isfinite(nearest_dist)) {
+          nearest_dist = 0.f;
+          nearest_fx = hx;
+          nearest_fy = hy;
+        }
+      }
       obs[base + 0] = hx;
       obs[base + 1] = hy;
       obs[base + 2] = dir_angle[i];
       obs[base + 3] = static_cast<float>(segments_count[i]);
-      obs[base + 4] = food_x[i];
-      obs[base + 5] = food_y[i];
-      obs[base + 6] = dist;
+      obs[base + 4] = nearest_fx;
+      obs[base + 5] = nearest_fy;
+      obs[base + 6] = nearest_dist;
     }
   }
 }
@@ -267,36 +329,6 @@ void BatchedEnv::reset(const uint8_t* mask) {
         next_in_cell[base_seg + s] = cell_head[cell_idx];
         cell_head[cell_idx] = base_seg + s;
       }
-      // Respawn food with spacing
-      float fx = 0.f, fy = 0.f;
-      bool placed = false;
-      for (int tries = 0; tries < 64 && !placed; ++tries) {
-        fx = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
-        fy = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
-        int cx = static_cast<int>(fx / cell_size);
-        int cy = static_cast<int>(fy / cell_size);
-        if (cx < 0) cx = 0; if (cx >= grid_w) cx = grid_w - 1;
-        if (cy < 0) cy = 0; if (cy >= grid_h) cy = grid_h - 1;
-        bool ok = true;
-        for (int oy = -1; oy <= 1 && ok; ++oy) {
-          for (int ox = -1; ox <= 1 && ok; ++ox) {
-            int ncx = cx + ox, ncy = cy + oy;
-            if (ncx < 0 || ncx >= grid_w || ncy < 0 || ncy >= grid_h) continue;
-            int head_idx = cell_head[cell_base + ncy * grid_w + ncx];
-            while (head_idx != -1) {
-                int sidx = head_idx - base_seg;
-                float dx = segments_x[base_seg + sidx] - fx;
-                float dy = segments_y[base_seg + sidx] - fy;
-                if (std::sqrt(dx*dx + dy*dy) < (segment_radius + eat_radius)) { ok = false; break; }
-                head_idx = next_in_cell[head_idx];
-            }
-          }
-        }
-        if (ok) placed = true;
-      }
-      food_x[i] = placed ? fx : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
-      food_y[i] = placed ? fy : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
-
       // Re-initialize bot snakes
       const int bot_cell_base = i * grid_w * grid_h;
       for (int c = 0; c < grid_w * grid_h; ++c) bot_cell_head[bot_cell_base + c] = -1;
@@ -345,16 +377,37 @@ void BatchedEnv::reset(const uint8_t* mask) {
           const int base = i * obs_dim;
           const float hx = segments_x[base_seg + 0];
           const float hy = segments_y[base_seg + 0];
-          const float dx = food_x[i] - hx;
-          const float dy = food_y[i] - hy;
-          const float dist = std::sqrt(dx*dx + dy*dy);
+          float nearest_fx = hx;
+          float nearest_fy = hy;
+          float nearest_dist = 0.f;
+          if (num_food > 0) {
+              nearest_dist = std::numeric_limits<float>::infinity();
+              const int food_base = i * num_food;
+              for (int f = 0; f < num_food; ++f) {
+                  const float fx = food_x[food_base + f];
+                  const float fy = food_y[food_base + f];
+                  const float dfx = fx - hx;
+                  const float dfy = fy - hy;
+                  const float d = std::sqrt(dfx*dfx + dfy*dfy);
+                  if (d < nearest_dist) {
+                      nearest_dist = d;
+                      nearest_fx = fx;
+                      nearest_fy = fy;
+                  }
+              }
+              if (!std::isfinite(nearest_dist)) {
+                  nearest_dist = 0.f;
+                  nearest_fx = hx;
+                  nearest_fy = hy;
+              }
+          }
           obs[base + 0] = hx;
           obs[base + 1] = hy;
           obs[base + 2] = dir_angle[i];
           obs[base + 3] = static_cast<float>(segments_count[i]);
-          obs[base + 4] = food_x[i];
-          obs[base + 5] = food_y[i];
-          obs[base + 6] = dist;
+          obs[base + 4] = nearest_fx;
+          obs[base + 5] = nearest_fy;
+          obs[base + 6] = nearest_dist;
       }
     }
   }
@@ -418,42 +471,50 @@ void BatchedEnv::step(const float* actions) {
 
     // Reward and eating logic
     reward[i] = 0.0f;
-    float dx = food_x[i] - hx;
-    float dy = food_y[i] - hy;
-    float dist = std::sqrt(dx*dx + dy*dy);
-    if (dist <= eat_radius) {
+    const int food_base = i * num_food;
+    int nearest_food_idx = -1;
+    float nearest_fx = hx;
+    float nearest_fy = hy;
+    float nearest_dist = 0.f;
+    if (num_food > 0) {
+      float best = std::numeric_limits<float>::infinity();
+      for (int f = 0; f < num_food; ++f) {
+        const float fx = food_x[food_base + f];
+        const float fy = food_y[food_base + f];
+        const float dfx = fx - hx;
+        const float dfy = fy - hy;
+        const float d = std::sqrt(dfx*dfx + dfy*dfy);
+        if (d < best) {
+          best = d;
+          nearest_food_idx = f;
+          nearest_fx = fx;
+          nearest_fy = fy;
+          nearest_dist = d;
+        }
+      }
+    }
+    if (nearest_food_idx >= 0 && nearest_dist <= eat_radius) {
       reward[i] = 1.0f;
       pending_growth[i] += 1;
-      // Respawn food away from snake
-      float fx = 0.f, fy = 0.f; bool placed = false;
-      for (int tries = 0; tries < 64 && !placed; ++tries) {
-        fx = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
-        fy = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
-        int cx = static_cast<int>(fx / cell_size);
-        int cy = static_cast<int>(fy / cell_size);
-        if (cx < 0) cx = 0; if (cx >= grid_w) cx = grid_w - 1;
-        if (cy < 0) cy = 0; if (cy >= grid_h) cy = grid_h - 1;
-        bool ok = true;
-        for (int oy = -1; oy <= 1 && ok; ++oy) {
-          for (int ox = -1; ox <= 1 && ok; ++ox) {
-            int ncx = cx + ox, ncy = cy + oy;
-            if (ncx < 0 || ncx >= grid_w || ncy < 0 || ncy >= grid_h) continue;
-            int head_idx = cell_head[cell_base + ncy * grid_w + ncx];
-            while (head_idx != -1) {
-              int sidx = head_idx - base_seg;
-              float ddx = segments_x[base_seg + sidx] - fx;
-              float ddy = segments_y[base_seg + sidx] - fy;
-              if (std::sqrt(ddx*ddx + ddy*ddy) < (segment_radius + eat_radius)) { ok = false; break; }
-              head_idx = next_in_cell[head_idx];
-            }
+      place_food(i, nearest_food_idx);
+      if (num_food > 0) {
+        float best = std::numeric_limits<float>::infinity();
+        nearest_food_idx = -1;
+        for (int f = 0; f < num_food; ++f) {
+          const float fx = food_x[food_base + f];
+          const float fy = food_y[food_base + f];
+          const float dfx = fx - hx;
+          const float dfy = fy - hy;
+          const float d = std::sqrt(dfx*dfx + dfy*dfy);
+          if (d < best) {
+            best = d;
+            nearest_food_idx = f;
+            nearest_fx = fx;
+            nearest_fy = fy;
+            nearest_dist = d;
           }
         }
-        if (ok) placed = true;
       }
-      food_x[i] = placed ? fx : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
-      food_y[i] = placed ? fy : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
-      // Recompute dist to new food
-      dx = food_x[i] - hx; dy = food_y[i] - hy; dist = std::sqrt(dx*dx + dy*dy);
     }
 
     // Apply growth one segment per step
@@ -461,8 +522,8 @@ void BatchedEnv::step(const float* actions) {
       int sc = segments_count[i];
       float lx = segments_x[base_seg + (sc - 1)];
       float ly = segments_y[base_seg + (sc - 1)];
-      float lx2 = (sc >= 2) ? segments_x[base_seg + (sc - 2)] : (lx - std::cos(dir_angle[i]) * 1.0f);
-      float ly2 = (sc >= 2) ? segments_y[base_seg + (sc - 2)] : (ly - std::sin(dir_angle[i]) * 1.0f);
+      float lx2 = (sc >= 2) ? segments_x[base_seg + (sc - 2)] : (lx - std::cos(dir_angle[i]) * min_segment_distance);
+      float ly2 = (sc >= 2) ? segments_y[base_seg + (sc - 2)] : (ly - std::sin(dir_angle[i]) * min_segment_distance);
       float tx = lx - lx2;
       float ty = ly - ly2;
       float td = std::sqrt(tx*tx + ty*ty);
@@ -511,10 +572,30 @@ void BatchedEnv::step(const float* actions) {
       float bot_hx = bot_segments_x[bot_base_seg + 0];
       float bot_hy = bot_segments_y[bot_base_seg + 0];
       
-      // Simple AI: turn towards food
-      float bot_dx = food_x[i] - bot_hx;
-      float bot_dy = food_y[i] - bot_hy;
-      float target_angle = std::atan2(bot_dy, bot_dx);
+      // Simple AI: turn towards nearest food
+      int bot_target_idx = -1;
+      float bot_target_fx = bot_hx;
+      float bot_target_fy = bot_hy;
+      if (num_food > 0) {
+        float best = std::numeric_limits<float>::infinity();
+        const int food_base = i * num_food;
+        for (int f = 0; f < num_food; ++f) {
+          const float fx = food_x[food_base + f];
+          const float fy = food_y[food_base + f];
+          const float dfx = fx - bot_hx;
+          const float dfy = fy - bot_hy;
+          const float d = std::sqrt(dfx*dfx + dfy*dfy);
+          if (d < best) {
+            best = d;
+            bot_target_idx = f;
+            bot_target_fx = fx;
+            bot_target_fy = fy;
+          }
+        }
+      }
+      float bot_dx = bot_target_fx - bot_hx;
+      float bot_dy = bot_target_fy - bot_hy;
+      float target_angle = (bot_target_idx >= 0) ? std::atan2(bot_dy, bot_dx) : bot_dir_angle[bot_idx];
       float angle_diff = target_angle - bot_dir_angle[bot_idx];
       // Normalize angle difference to [-pi, pi]
       while (angle_diff > kPi) angle_diff -= kTwoPi;
@@ -567,18 +648,18 @@ void BatchedEnv::step(const float* actions) {
       }
       
       // Bot eating logic (can steal player's food)
-      float bot_food_dx = food_x[i] - bot_hx;
-      float bot_food_dy = food_y[i] - bot_hy;
-      float bot_food_dist = std::sqrt(bot_food_dx*bot_food_dx + bot_food_dy*bot_food_dy);
-      if (bot_food_dist <= eat_radius) {
-        bot_pending_growth[bot_idx] += 1;
-        // Respawn food
-        float fx = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
-        float fy = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[i])) * static_cast<float>(map_size);
-        food_x[i] = fx;
-        food_y[i] = fy;
-        // Update player's food distance
-        dx = food_x[i] - hx; dy = food_y[i] - hy; dist = std::sqrt(dx*dx + dy*dy);
+      if (num_food > 0) {
+        bool ate = false;
+        for (int f = 0; f < num_food && !ate; ++f) {
+          const float dfx = food_x[food_base + f] - bot_hx;
+          const float dfy = food_y[food_base + f] - bot_hy;
+          const float d = std::sqrt(dfx*dfx + dfy*dfy);
+          if (d <= eat_radius) {
+            bot_pending_growth[bot_idx] += 1;
+            place_food(i, f);
+            ate = true;
+          }
+        }
       }
       
       // Bot growth
@@ -586,8 +667,8 @@ void BatchedEnv::step(const float* actions) {
         int sc = bot_segments_count[bot_idx];
         float lx = bot_segments_x[bot_base_seg + (sc - 1)];
         float ly = bot_segments_y[bot_base_seg + (sc - 1)];
-        float lx2 = (sc >= 2) ? bot_segments_x[bot_base_seg + (sc - 2)] : (lx - std::cos(bot_dir_angle[bot_idx]) * 1.0f);
-        float ly2 = (sc >= 2) ? bot_segments_y[bot_base_seg + (sc - 2)] : (ly - std::sin(bot_dir_angle[bot_idx]) * 1.0f);
+        float lx2 = (sc >= 2) ? bot_segments_x[bot_base_seg + (sc - 2)] : (lx - std::cos(bot_dir_angle[bot_idx]) * min_segment_distance);
+        float ly2 = (sc >= 2) ? bot_segments_y[bot_base_seg + (sc - 2)] : (ly - std::sin(bot_dir_angle[bot_idx]) * min_segment_distance);
         float tx = lx - lx2;
         float ty = ly - ly2;
         float td = std::sqrt(tx*tx + ty*ty);
@@ -626,13 +707,40 @@ void BatchedEnv::step(const float* actions) {
     // Write observation
     if (obs_dim >= 1) {
       const int base = i * obs_dim;
+      float final_fx = hx;
+      float final_fy = hy;
+      float final_dist = 0.f;
+      if (num_food > 0) {
+        float best = std::numeric_limits<float>::infinity();
+        const int food_base_obs = i * num_food;
+        const float phx = segments_x[base_seg + 0];
+        const float phy = segments_y[base_seg + 0];
+        for (int f = 0; f < num_food; ++f) {
+          const float fx = food_x[food_base_obs + f];
+          const float fy = food_y[food_base_obs + f];
+          const float dfx = fx - phx;
+          const float dfy = fy - phy;
+          const float d = std::sqrt(dfx*dfx + dfy*dfy);
+          if (d < best) {
+            best = d;
+            final_fx = fx;
+            final_fy = fy;
+            final_dist = d;
+          }
+        }
+        if (!std::isfinite(final_dist)) {
+          final_dist = 0.f;
+          final_fx = phx;
+          final_fy = phy;
+        }
+      }
       obs[base + 0] = segments_x[base_seg + 0];
       obs[base + 1] = segments_y[base_seg + 0];
       obs[base + 2] = dir_angle[i];
       obs[base + 3] = static_cast<float>(segments_count[i]);
-      obs[base + 4] = food_x[i];
-      obs[base + 5] = food_y[i];
-      obs[base + 6] = dist;
+      obs[base + 4] = final_fx;
+      obs[base + 5] = final_fy;
+      obs[base + 6] = final_dist;
     }
   }
 }
@@ -702,7 +810,10 @@ void BatchedEnv::render_rgb() {
     }
     // Draw player head brighter
     draw_disk(segments_x[base_seg + 0], segments_y[base_seg + 0], segment_radius * 1.1f, 40, 255, 40);
-    // Draw food (red)
-    draw_disk(food_x[i], food_y[i], eat_radius, 200, 60, 60);
+    // Draw food items (red)
+    const int food_base = i * num_food;
+    for (int f = 0; f < num_food; ++f) {
+      draw_disk(food_x[food_base + f], food_y[food_base + f], eat_radius, 200, 60, 60);
+    }
   }
 }

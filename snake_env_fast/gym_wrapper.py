@@ -22,6 +22,9 @@ class FastVectorEnv(VectorEnv):
         eat_radius: float = 1.0,
         seed: int | None = None,
         render_mode: str | None = None,
+        num_bots: int = 3,
+        max_bot_segments: int = 12,
+        num_food: int = 5,
     ):
         self._render_mode = render_mode
         mode = RenderMode.RGB if render_mode == "rgb_array" else RenderMode.Headless
@@ -34,6 +37,14 @@ class FastVectorEnv(VectorEnv):
             float(max_turn),
             float(eat_radius),
             0 if seed is None else int(seed),
+            max_segments=64,
+            initial_segments=4,
+            segment_radius=2.0,
+            min_segment_distance=3.0,
+            cell_size=3.0,
+            num_bots=num_bots,
+            max_bot_segments=max_bot_segments,
+            num_food=num_food,
         )
         self.num_envs = num_envs
         # Build spaces from core dims (source of truth)
