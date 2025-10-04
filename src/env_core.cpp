@@ -146,6 +146,32 @@ void BatchedEnv::place_food(int env_idx, int food_slot) {
   food_y[food_base + food_slot] = placed ? fy : rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[env_idx])) * static_cast<float>(map_size);
 }
 
+void BatchedEnv::respawn_bot(int env_idx, int bot_idx) {
+  const int global_bot_idx = env_idx * num_bots + bot_idx;
+  const int bot_base_seg = global_bot_idx * max_bot_segments;
+  bot_alive[global_bot_idx] = 1;
+  bot_pending_growth[global_bot_idx] = 0;
+
+  float brx = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[env_idx]));
+  float bry = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[env_idx]));
+  float bra = rand_uniform_01(reinterpret_cast<uint64_t&>(rng_state[env_idx]));
+  float bhx = brx * static_cast<float>(map_size);
+  float bhy = bry * static_cast<float>(map_size);
+  bot_dir_angle[global_bot_idx] = bra * kTwoPi;
+
+  const int bot_initial_segs = std::min(3, max_bot_segments);
+  bot_segments_count[global_bot_idx] = bot_initial_segs;
+  bot_segments_x[bot_base_seg + 0] = bhx;
+  bot_segments_y[bot_base_seg + 0] = bhy;
+  for (int s = 1; s < bot_initial_segs; ++s) {
+    float offset = static_cast<float>(s) * min_segment_distance;
+    float ax = std::cos(bot_dir_angle[global_bot_idx] + kPi) * offset;
+    float ay = std::sin(bot_dir_angle[global_bot_idx] + kPi) * offset;
+    bot_segments_x[bot_base_seg + s] = bhx + ax;
+    bot_segments_y[bot_base_seg + s] = bhy + ay;
+  }
+}
+
 void BatchedEnv::full_reset() {
   std::fill(obs.begin(), obs.end(), 0.f);
   std::fill(reward.begin(), reward.end(), 0.f);
@@ -566,8 +592,10 @@ void BatchedEnv::step(const float* actions) {
     // For each bot snake
     for (int b = 0; b < num_bots; ++b) {
       const int bot_idx = i * num_bots + b;
-      if (!bot_alive[bot_idx]) continue;
-      
+      if (!bot_alive[bot_idx]) {
+        respawn_bot(i, b);
+      }
+
       const int bot_base_seg = bot_idx * max_bot_segments;
       float bot_hx = bot_segments_x[bot_base_seg + 0];
       float bot_hy = bot_segments_y[bot_base_seg + 0];
@@ -646,6 +674,39 @@ void BatchedEnv::step(const float* actions) {
         bot_next_in_cell[bot_base_seg + s] = bot_cell_head[bcell_idx];
         bot_cell_head[bcell_idx] = bot_base_seg + s;
       }
+
+      // Bot vs bot collision detection (head against other bot segments)
+      const float bot_collide_r = segment_radius * 1.2f;
+      int bot_head_cx = static_cast<int>(bot_hx / cell_size);
+      int bot_head_cy = static_cast<int>(bot_hy / cell_size);
+      if (bot_head_cx < 0) bot_head_cx = 0; if (bot_head_cx >= grid_w) bot_head_cx = grid_w - 1;
+      if (bot_head_cy < 0) bot_head_cy = 0; if (bot_head_cy >= grid_h) bot_head_cy = grid_h - 1;
+      bool bot_died = false;
+      for (int oy = -1; oy <= 1 && !bot_died; ++oy) {
+        for (int ox = -1; ox <= 1 && !bot_died; ++ox) {
+          int ncx = bot_head_cx + ox;
+          int ncy = bot_head_cy + oy;
+          if (ncx < 0 || ncx >= grid_w || ncy < 0 || ncy >= grid_h) continue;
+          int ptr = bot_cell_head[bot_cell_base + ncy * grid_w + ncx];
+          while (ptr != -1) {
+            const int other_bot_idx = ptr / max_bot_segments;
+            if (other_bot_idx != bot_idx && bot_alive[other_bot_idx]) {
+              float ddx = bot_segments_x[ptr] - bot_hx;
+              float ddy = bot_segments_y[ptr] - bot_hy;
+              if (std::sqrt(ddx * ddx + ddy * ddy) < bot_collide_r) {
+                bot_alive[bot_idx] = 0;
+                bot_alive[other_bot_idx] = 0;
+                bot_died = true;
+                break;
+              }
+            }
+            ptr = bot_next_in_cell[ptr];
+          }
+        }
+      }
+      if (!bot_alive[bot_idx]) {
+        continue;
+      }
       
       // Bot eating logic (can steal player's food)
       if (num_food > 0) {
@@ -691,6 +752,12 @@ void BatchedEnv::step(const float* actions) {
           float ddy = bot_segments_y[bot_ptr] - hy;
           if (std::sqrt(ddx*ddx + ddy*ddy) < collide_r) {
             terminated[i] = 1;
+            const int hit_global_bot = bot_ptr / max_bot_segments;
+            const int hit_bot_env = hit_global_bot / num_bots;
+            if (hit_bot_env == i) {
+              const int local_idx = hit_global_bot % num_bots;
+              bot_alive[hit_global_bot] = 0;
+            }
             break;
           }
           bot_ptr = bot_next_in_cell[bot_ptr];

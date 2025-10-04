@@ -77,8 +77,6 @@ Key parameters:
 
 ## TODO
 
-- Larger map support
 - RGB rendering focus on snake head
 - More realistic rendering
-- Make bots die when they collide with one another
-- Respawn bots if they die
+- Make sure player snake can kill bots

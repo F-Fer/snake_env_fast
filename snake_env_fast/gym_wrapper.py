@@ -40,7 +40,7 @@ class FastVectorEnv(VectorEnv):
             max_segments=32,
             initial_segments=4,
             segment_radius=1.0,
-            min_segment_distance=1.5,
+            min_segment_distance=2.0,
             cell_size=1.5,
             num_bots=num_bots,
             max_bot_segments=max_bot_segments,

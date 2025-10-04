@@ -147,4 +147,5 @@ public:
     void render_rgb();
 private:
     void place_food(int env_idx, int food_slot);
+    void respawn_bot(int env_idx, int bot_idx);
 };
