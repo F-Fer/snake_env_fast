@@ -75,6 +75,25 @@ PYBIND11_MODULE(_fastenv, m) {
         }, py::arg("actions"))
         .def("set_seed", &BatchedEnv::set_seed, py::arg("seed"))
         .def("render_rgb", &BatchedEnv::render_rgb)
+        .def("debug_set_player_state", [](BatchedEnv& e, int env_idx, py::array_t<float> xs, py::array_t<float> ys, float angle){
+            if (xs.ndim() != 1 || ys.ndim() != 1) throw std::runtime_error("debug_set_player_state expects 1D arrays");
+            if (xs.shape(0) != ys.shape(0)) throw std::runtime_error("debug_set_player_state arrays must match");
+            std::vector<float> vx(xs.shape(0));
+            std::vector<float> vy(ys.shape(0));
+            std::memcpy(vx.data(), xs.data(), vx.size() * sizeof(float));
+            std::memcpy(vy.data(), ys.data(), vy.size() * sizeof(float));
+            e.debug_set_player_state(env_idx, vx, vy, angle);
+        }, py::arg("env_idx"), py::arg("xs"), py::arg("ys"), py::arg("angle"))
+        .def("debug_set_bot_state", [](BatchedEnv& e, int env_idx, int bot_idx, py::array_t<float> xs, py::array_t<float> ys, float angle, bool alive){
+            if (xs.ndim() != 1 || ys.ndim() != 1) throw std::runtime_error("debug_set_bot_state expects 1D arrays");
+            if (xs.shape(0) != ys.shape(0)) throw std::runtime_error("debug_set_bot_state arrays must match");
+            std::vector<float> vx(xs.shape(0));
+            std::vector<float> vy(ys.shape(0));
+            std::memcpy(vx.data(), xs.data(), vx.size() * sizeof(float));
+            std::memcpy(vy.data(), ys.data(), vy.size() * sizeof(float));
+            e.debug_set_bot_state(env_idx, bot_idx, vx, vy, angle, alive);
+        }, py::arg("env_idx"), py::arg("bot_idx"), py::arg("xs"), py::arg("ys"), py::arg("angle"), py::arg("alive"))
+        .def("debug_rebuild_spatial_hash", &BatchedEnv::debug_rebuild_spatial_hash, py::arg("env_idx"))
         .def_property_readonly("obs", [](BatchedEnv& e){ return make_view(e.obs, {e.N, e.obs_dim}); })
         .def_property_readonly("rgb", [](BatchedEnv& e){ return py::array(py::buffer_info(
             e.rgb_image.data(), sizeof(uint8_t), py::format_descriptor<uint8_t>::format(),

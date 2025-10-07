@@ -145,6 +145,11 @@ public:
 
     // Render RGB frames into rgb_image if render_mode == RenderMode::RGB
     void render_rgb();
+
+    // Debug helpers (exposed via bindings for tests)
+    void debug_set_player_state(int env_idx, const std::vector<float>& xs, const std::vector<float>& ys, float angle);
+    void debug_set_bot_state(int env_idx, int bot_idx, const std::vector<float>& xs, const std::vector<float>& ys, float angle, bool alive);
+    void debug_rebuild_spatial_hash(int env_idx);
 private:
     void place_food(int env_idx, int food_slot);
     void respawn_bot(int env_idx, int bot_idx);

@@ -33,13 +33,7 @@ for _ in range(100):
 ## Play Interactively
 
 ```bash
-python -m snake_env_fast.play
-```
-
-## Demo Bot Snakes
-
-```bash
-python demo_bots.py
+uv run python -m snake_env_fast.play
 ```
 
 ## Configuration
@@ -74,6 +68,12 @@ Key parameters:
 | `num_food` | int | 5 | Food items maintained per environment |
 
 > All parameters are exposed via `snake_env_fast._fastenv.BatchedEnv` and forwarded by the `FastVectorEnv` wrapper. Floating-point defaults are expressed in world units.
+
+## Testing
+
+```bash
+uv run pytest tests/test_player_bot_collision.py
+```
 
 ## TODO
 

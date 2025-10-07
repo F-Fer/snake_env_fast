@@ -172,6 +172,81 @@ void BatchedEnv::respawn_bot(int env_idx, int bot_idx) {
   }
 }
 
+void BatchedEnv::debug_set_player_state(int env_idx, const std::vector<float>& xs, const std::vector<float>& ys, float angle) {
+  if (env_idx < 0 || env_idx >= N) {
+    throw std::out_of_range("debug_set_player_state env_idx out of range");
+  }
+  if (xs.size() != ys.size() || xs.empty()) {
+    throw std::invalid_argument("debug_set_player_state requires matching non-empty coordinate arrays");
+  }
+  dir_angle[env_idx] = angle;
+  segments_count[env_idx] = static_cast<int>(std::min(xs.size(), static_cast<size_t>(max_segments)));
+  const int base_seg = env_idx * max_segments;
+  for (int i = 0; i < segments_count[env_idx]; ++i) {
+    segments_x[base_seg + i] = xs[i];
+    segments_y[base_seg + i] = ys[i];
+  }
+}
+
+void BatchedEnv::debug_set_bot_state(int env_idx, int bot_idx, const std::vector<float>& xs, const std::vector<float>& ys, float angle, bool alive) {
+  if (env_idx < 0 || env_idx >= N) {
+    throw std::out_of_range("debug_set_bot_state env_idx out of range");
+  }
+  if (bot_idx < 0 || bot_idx >= num_bots) {
+    throw std::out_of_range("debug_set_bot_state bot_idx out of range");
+  }
+  if (xs.size() != ys.size() || xs.empty()) {
+    throw std::invalid_argument("debug_set_bot_state requires matching non-empty coordinate arrays");
+  }
+  const int global_bot_idx = env_idx * num_bots + bot_idx;
+  bot_alive[global_bot_idx] = alive ? 1 : 0;
+  bot_dir_angle[global_bot_idx] = angle;
+  bot_segments_count[global_bot_idx] = static_cast<int>(std::min(xs.size(), static_cast<size_t>(max_bot_segments)));
+  const int base = global_bot_idx * max_bot_segments;
+  for (int i = 0; i < bot_segments_count[global_bot_idx]; ++i) {
+    bot_segments_x[base + i] = xs[i];
+    bot_segments_y[base + i] = ys[i];
+  }
+}
+
+void BatchedEnv::debug_rebuild_spatial_hash(int env_idx) {
+  if (env_idx < 0 || env_idx >= N) {
+    throw std::out_of_range("debug_rebuild_spatial_hash env_idx out of range");
+  }
+  const int cell_base = env_idx * grid_w * grid_h;
+  const int base_seg = env_idx * max_segments;
+
+  for (int c = 0; c < grid_w * grid_h; ++c) {
+    cell_head[cell_base + c] = -1;
+    bot_cell_head[cell_base + c] = -1;
+  }
+
+  for (int s = 0; s < segments_count[env_idx]; ++s) {
+    int cx = static_cast<int>(segments_x[base_seg + s] / cell_size);
+    int cy = static_cast<int>(segments_y[base_seg + s] / cell_size);
+    if (cx < 0) cx = 0; else if (cx >= grid_w) cx = grid_w - 1;
+    if (cy < 0) cy = 0; else if (cy >= grid_h) cy = grid_h - 1;
+    int cell_idx = cell_base + cy * grid_w + cx;
+    next_in_cell[base_seg + s] = cell_head[cell_idx];
+    cell_head[cell_idx] = base_seg + s;
+  }
+
+  for (int b = 0; b < num_bots; ++b) {
+    const int global_bot_idx = env_idx * num_bots + b;
+    if (!bot_alive[global_bot_idx]) continue;
+    const int bot_base = global_bot_idx * max_bot_segments;
+    for (int s = 0; s < bot_segments_count[global_bot_idx]; ++s) {
+      int cx = static_cast<int>(bot_segments_x[bot_base + s] / cell_size);
+      int cy = static_cast<int>(bot_segments_y[bot_base + s] / cell_size);
+      if (cx < 0) cx = 0; else if (cx >= grid_w) cx = grid_w - 1;
+      if (cy < 0) cy = 0; else if (cy >= grid_h) cy = grid_h - 1;
+      int cell_idx = cell_base + cy * grid_w + cx;
+      bot_next_in_cell[bot_base + s] = bot_cell_head[cell_base + cell_idx];
+      bot_cell_head[cell_base + cell_idx] = bot_base + s;
+    }
+  }
+}
+
 void BatchedEnv::full_reset() {
   std::fill(obs.begin(), obs.end(), 0.f);
   std::fill(reward.begin(), reward.end(), 0.f);
