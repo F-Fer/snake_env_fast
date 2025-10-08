@@ -55,7 +55,7 @@ public:
     const int initial_segments; // starting number of segments (player)
     const float segment_radius; // for collisions and rendering
     const float min_segment_distance; // target spacing between segments
-    const float cell_size; // spatial hash cell size
+    const float cell_size; // occupancy grid cell size
     const int grid_w; // spatial hash width
     const int grid_h; // spatial hash height
     const int num_bots; // number of bot snakes per env
@@ -101,11 +101,8 @@ public:
     std::vector<float> bot_dir_angle; // [N * num_bots]
     std::vector<uint8_t> bot_alive; // [N * num_bots], 0 if dead, 1 if alive
 
-    // Spatial hash for collision/queries
-    std::vector<int> cell_head;   // [N * grid_w * grid_h], -1 for empty
-    std::vector<int> next_in_cell; // [N * max_segments], next index or -1
-    std::vector<int> bot_cell_head; // [N * grid_w * grid_h], -1 for empty (separate for bots)
-    std::vector<int> bot_next_in_cell; // [N * num_bots * max_bot_segments], next index or -1
+    // Occupancy grid: -1 empty, 0 food, 1 player, >=2 bots (offset by 2)
+    std::vector<int> grid; // [N * grid_w * grid_h]
 
     // Actions are a single angle per env; act_dim is fixed to 1.
     explicit BatchedEnv(

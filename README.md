@@ -9,7 +9,7 @@ A high-performance, parallel Snake environment implemented in C++ with Python bi
 uv pip install scikit-build-core pybind11
 
 # Build and install
-uv --refresh pip install -e .
+uv run --refresh python -m pip install -e .  
 ```
 
 ## Quick Start

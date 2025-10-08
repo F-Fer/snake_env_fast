@@ -38,7 +38,7 @@ class FastVectorEnv(VectorEnv):
             float(eat_radius),
             0 if seed is None else int(seed),
             max_segments=32,
-            initial_segments=4,
+            initial_segments=12,
             segment_radius=1.0,
             min_segment_distance=2.0,
             cell_size=1.5,

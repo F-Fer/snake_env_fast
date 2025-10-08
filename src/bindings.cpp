@@ -102,6 +102,9 @@ PYBIND11_MODULE(_fastenv, m) {
         .def_property_readonly("reward", [](BatchedEnv& e){ return make_view(e.reward, {e.N}); })
         .def_property_readonly("terminated", [](BatchedEnv& e){ return make_view(e.terminated, {e.N}); })
         .def_property_readonly("truncated", [](BatchedEnv& e){ return make_view(e.truncated, {e.N}); })
+        .def_property_readonly("grid", [](BatchedEnv& e){ return make_view(e.grid, {e.N, e.grid_w, e.grid_h}); })
+        .def_property_readonly("grid_w", [](BatchedEnv& e){ return e.grid_w; })
+        .def_property_readonly("grid_h", [](BatchedEnv& e){ return e.grid_h; })
         .def_readonly("N", &BatchedEnv::N)
         .def_readonly("obs_dim", &BatchedEnv::obs_dim)
         .def_readonly("act_dim", &BatchedEnv::act_dim);
