@@ -427,6 +427,23 @@ void BatchedEnv::step(const float* actions) {
     segments_x[base_seg + 0] = hx;
     segments_y[base_seg + 0] = hy;
 
+    // Update head in grid
+    const int cell_base = i * grid_w * grid_h;
+    hx = static_cast<int>(hx / cell_size);
+    hy = static_cast<int>(hy / cell_size);
+    if (hx < 0) hx = 0; if (hx >= grid_w) hx = grid_w - 1;
+    if (hy < 0) hy = 0; if (hy >= grid_h) hy = grid_h - 1;
+    // Check if head is in a bot's snake
+    if (grid[cell_base + hy * grid_w + hx] >= 2) {
+      terminated[i] = 1;
+      truncated[i] = 1;
+      continue;
+    }
+    // Reset grid entirely
+    std::fill(grid.begin() + cell_base, grid.begin() + cell_base + grid_w * grid_h, -1);
+    // Update head in grid
+    grid[cell_base + hy * grid_w + hx] = 1;
+
     // Follow pass for body segments
     const int segs = segments_count[i]; // :)
     for (int s = 1; s < segs; ++s) {
@@ -442,13 +459,9 @@ void BatchedEnv::step(const float* actions) {
         segments_x[base_seg + s] = cx + dxs * move_ratio;
         segments_y[base_seg + s] = cy + dys * move_ratio;
       }
-    }
-
-    // Update player occupancy in grid
-    const int cell_base = i * grid_w * grid_h;
-    for (int s = 0; s < segs; ++s) {
-      int cx = static_cast<int>(segments_x[base_seg + s] / cell_size);
-      int cy = static_cast<int>(segments_y[base_seg + s] / cell_size);
+      // Update occupancy grid
+      cx = static_cast<int>(cx / cell_size);
+      cy = static_cast<int>(cy / cell_size);
       if (cx < 0) cx = 0; if (cx >= grid_w) cx = grid_w - 1;
       if (cy < 0) cy = 0; if (cy >= grid_h) cy = grid_h - 1;
       grid[cell_base + cy * grid_w + cx] = 1;
@@ -577,15 +590,6 @@ void BatchedEnv::step(const float* actions) {
       
       bot_segments_x[bot_base_seg + 0] = bot_hx;
       bot_segments_y[bot_base_seg + 0] = bot_hy;
-      
-      // Clear old bot cells
-      for (int s = 0; s < bot_segs; ++s) {
-        int bcx = static_cast<int>(bot_segments_x[bot_base_seg + s] / cell_size);
-        int bcy = static_cast<int>(bot_segments_y[bot_base_seg + s] / cell_size);
-        if (bcx < 0) bcx = 0; if (bcx >= grid_w) bcx = grid_w - 1;
-        if (bcy < 0) bcy = 0; if (bcy >= grid_h) bcy = grid_h - 1;
-        grid[cell_base + bcy * grid_w + bcx] = -1;
-      }
 
       // Follow segments
       for (int s = 1; s < bot_segs; ++s) {
