@@ -413,57 +413,62 @@ void BatchedEnv::step(const float* actions) {
 
     // Move head forward (segments[0])
     const int base_seg = i * max_segments;
-    float hx = segments_x[base_seg + 0];
-    float hy = segments_y[base_seg + 0];
-    hx = hx + std::cos(dir_angle[i]) * static_cast<float>(step_size);
-    hy = hy + std::sin(dir_angle[i]) * static_cast<float>(step_size);
+    const int cell_base = i * grid_w * grid_h;
+    auto clamp_cell = [&](int& cx, int& cy) {
+      if (cx < 0) cx = 0; else if (cx >= grid_w) cx = grid_w - 1;
+      if (cy < 0) cy = 0; else if (cy >= grid_h) cy = grid_h - 1;
+    };
+    float new_hx = segments_x[base_seg + 0] + std::cos(dir_angle[i]) * static_cast<float>(step_size);
+    float new_hy = segments_y[base_seg + 0] + std::sin(dir_angle[i]) * static_cast<float>(step_size);
     // Check if head is out of bounds
-    if (hx < 0 || hx >= map_size || hy < 0 || hy >= map_size) {
+    if (new_hx < 0 || new_hx >= map_size || new_hy < 0 || new_hy >= map_size) {
       terminated[i] = 1;
       truncated[i] = 1;
       continue;
+    }
+    int head_cx = static_cast<int>(new_hx / cell_size);
+    int head_cy = static_cast<int>(new_hy / cell_size);
+    clamp_cell(head_cx, head_cy);
+    // Check if head is in a bot snake
+    if (grid[cell_base + head_cy * grid_w + head_cx] >= 2) {
+      terminated[i] = 1;
+      truncated[i] = 1;
+      continue;
+    }
+    // Clear previous player occupancy
+    for (int s = 0; s < segments_count[i]; ++s) {
+      int cx = static_cast<int>(segments_x[base_seg + s] / cell_size);
+      int cy = static_cast<int>(segments_y[base_seg + s] / cell_size);
+      clamp_cell(cx, cy);
+      grid[cell_base + cy * grid_w + cx] = -1;
     }
     // Update segments[0]
-    segments_x[base_seg + 0] = hx;
-    segments_y[base_seg + 0] = hy;
-
-    // Update head in grid
-    const int cell_base = i * grid_w * grid_h;
-    hx = static_cast<int>(hx / cell_size);
-    hy = static_cast<int>(hy / cell_size);
-    if (hx < 0) hx = 0; if (hx >= grid_w) hx = grid_w - 1;
-    if (hy < 0) hy = 0; if (hy >= grid_h) hy = grid_h - 1;
-    // Check if head is in a bot's snake
-    if (grid[cell_base + hy * grid_w + hx] >= 2) {
-      terminated[i] = 1;
-      truncated[i] = 1;
-      continue;
-    }
-    // Reset grid entirely
-    std::fill(grid.begin() + cell_base, grid.begin() + cell_base + grid_w * grid_h, -1);
-    // Update head in grid
-    grid[cell_base + hy * grid_w + hx] = 1;
+    segments_x[base_seg + 0] = new_hx;
+    segments_y[base_seg + 0] = new_hy;
+    float hx = new_hx;
+    float hy = new_hy;
 
     // Follow pass for body segments
     const int segs = segments_count[i]; // :)
     for (int s = 1; s < segs; ++s) {
-      float tx = segments_x[base_seg + (s - 1)];
-      float ty = segments_y[base_seg + (s - 1)];
-      float cx = segments_x[base_seg + s];
-      float cy = segments_y[base_seg + s];
-      float dxs = tx - cx;
-      float dys = ty - cy;
+      float target_x = segments_x[base_seg + (s - 1)];
+      float target_y = segments_y[base_seg + (s - 1)];
+      float curr_x = segments_x[base_seg + s];
+      float curr_y = segments_y[base_seg + s];
+      float dxs = target_x - curr_x;
+      float dys = target_y - curr_y;
       float d = std::sqrt(dxs*dxs + dys*dys);
       if (d > min_segment_distance && d > 0.0f) {
         float move_ratio = static_cast<float>(step_size) / d;
-        segments_x[base_seg + s] = cx + dxs * move_ratio;
-        segments_y[base_seg + s] = cy + dys * move_ratio;
+        segments_x[base_seg + s] = curr_x + dxs * move_ratio;
+        segments_y[base_seg + s] = curr_y + dys * move_ratio;
       }
-      // Update occupancy grid
-      cx = static_cast<int>(cx / cell_size);
-      cy = static_cast<int>(cy / cell_size);
-      if (cx < 0) cx = 0; if (cx >= grid_w) cx = grid_w - 1;
-      if (cy < 0) cy = 0; if (cy >= grid_h) cy = grid_h - 1;
+    }
+    // Repaint player occupancy
+    for (int s = 0; s < segments_count[i]; ++s) {
+      int cx = static_cast<int>(segments_x[base_seg + s] / cell_size);
+      int cy = static_cast<int>(segments_y[base_seg + s] / cell_size);
+      clamp_cell(cx, cy);
       grid[cell_base + cy * grid_w + cx] = 1;
     }
 
@@ -513,18 +518,14 @@ void BatchedEnv::step(const float* actions) {
       segments_y[base_seg + sc] = ly + ty * min_segment_distance;
       segments_count[i] = sc + 1;
       pending_growth[i] -= 1;
+      // Update occupancy grid
+      int cx = static_cast<int>(segments_x[base_seg + sc] / cell_size);
+      int cy = static_cast<int>(segments_y[base_seg + sc] / cell_size);
+      clamp_cell(cx, cy);
+      grid[cell_base + cy * grid_w + cx] = 1;
     }
 
     // Bot snakes: AI and movement
-    for (int s = 0; s < segments_count[i]; ++s) {
-      int cx = static_cast<int>(segments_x[base_seg + s] / cell_size);
-      int cy = static_cast<int>(segments_y[base_seg + s] / cell_size);
-      if (cx < 0) cx = 0; if (cx >= grid_w) cx = grid_w - 1;
-      if (cy < 0) cy = 0; if (cy >= grid_h) cy = grid_h - 1;
-      grid[cell_base + cy * grid_w + cx] = 1;
-    }
-    
-    // For each bot snake
     for (int b = 0; b < num_bots; ++b) {
       const int bot_idx = i * num_bots + b;
       if (!bot_alive[bot_idx]) {
@@ -532,8 +533,16 @@ void BatchedEnv::step(const float* actions) {
       }
 
       const int bot_base_seg = bot_idx * max_bot_segments;
+      const int bot_segs = bot_segments_count[bot_idx];
       float bot_hx = bot_segments_x[bot_base_seg + 0];
       float bot_hy = bot_segments_y[bot_base_seg + 0];
+      // Remove previous occupancy for this bot before movement
+      for (int s = 0; s < bot_segs; ++s) {
+        int bcx = static_cast<int>(bot_segments_x[bot_base_seg + s] / cell_size);
+        int bcy = static_cast<int>(bot_segments_y[bot_base_seg + s] / cell_size);
+        clamp_cell(bcx, bcy);
+        grid[cell_base + bcy * grid_w + bcx] = -1;
+      }
       
       // Simple AI: turn towards nearest food
       int bot_target_idx = -1;
@@ -573,17 +582,8 @@ void BatchedEnv::step(const float* actions) {
       bot_hx = bot_hx + std::cos(bot_dir_angle[bot_idx]) * static_cast<float>(step_size);
       bot_hy = bot_hy + std::sin(bot_dir_angle[bot_idx]) * static_cast<float>(step_size);
       
-      const int bot_segs = bot_segments_count[bot_idx];
       // Check bounds
       if (bot_hx < 0 || bot_hx >= map_size || bot_hy < 0 || bot_hy >= map_size) {
-        // Clear old cells for this bot
-        for (int s = 0; s < bot_segs; ++s) {
-          int bcx = static_cast<int>(bot_segments_x[bot_base_seg + s] / cell_size);
-          int bcy = static_cast<int>(bot_segments_y[bot_base_seg + s] / cell_size);
-          if (bcx < 0) bcx = 0; if (bcx >= grid_w) bcx = grid_w - 1;
-          if (bcy < 0) bcy = 0; if (bcy >= grid_h) bcy = grid_h - 1;
-          grid[cell_base + bcy * grid_w + bcx] = -1;
-        }
         bot_alive[bot_idx] = 0;
         continue;
       }
@@ -610,14 +610,21 @@ void BatchedEnv::step(const float* actions) {
       // Bot vs bot collision detection via grid
       int bot_head_cx = static_cast<int>(bot_hx / cell_size);
       int bot_head_cy = static_cast<int>(bot_hy / cell_size);
-      if (bot_head_cx < 0) bot_head_cx = 0; if (bot_head_cx >= grid_w) bot_head_cx = grid_w - 1;
-      if (bot_head_cy < 0) bot_head_cy = 0; if (bot_head_cy >= grid_h) bot_head_cy = grid_h - 1;
+      clamp_cell(bot_head_cx, bot_head_cy);
       int occupant = grid[cell_base + bot_head_cy * grid_w + bot_head_cx];
       if (occupant == 1) {
         bot_alive[bot_idx] = 0;
         continue;
       } else if (occupant >= 2 && occupant != (2 + b)) {
         int other_bot_idx = (occupant - 2) + i * num_bots;
+        const int other_base_seg = other_bot_idx * max_bot_segments;
+        const int other_segs = bot_segments_count[other_bot_idx];
+        for (int s = 0; s < other_segs; ++s) {
+          int ocx = static_cast<int>(bot_segments_x[other_base_seg + s] / cell_size);
+          int ocy = static_cast<int>(bot_segments_y[other_base_seg + s] / cell_size);
+          clamp_cell(ocx, ocy);
+          grid[cell_base + ocy * grid_w + ocx] = -1;
+        }
         bot_alive[bot_idx] = 0;
         bot_alive[other_bot_idx] = 0;
         continue;
@@ -627,8 +634,7 @@ void BatchedEnv::step(const float* actions) {
       for (int s = 0; s < bot_segs; ++s) {
         int bcx = static_cast<int>(bot_segments_x[bot_base_seg + s] / cell_size);
         int bcy = static_cast<int>(bot_segments_y[bot_base_seg + s] / cell_size);
-        if (bcx < 0) bcx = 0; if (bcx >= grid_w) bcx = grid_w - 1;
-        if (bcy < 0) bcy = 0; if (bcy >= grid_h) bcy = grid_h - 1;
+        clamp_cell(bcx, bcy);
         grid[cell_base + bcy * grid_w + bcx] = 2 + b;
       }
 
@@ -661,12 +667,17 @@ void BatchedEnv::step(const float* actions) {
         bot_segments_y[bot_base_seg + sc] = ly + ty * min_segment_distance;
         bot_segments_count[bot_idx] = sc + 1;
         bot_pending_growth[bot_idx] -= 1;
+        int bcx = static_cast<int>(bot_segments_x[bot_base_seg + sc] / cell_size);
+        int bcy = static_cast<int>(bot_segments_y[bot_base_seg + sc] / cell_size);
+        clamp_cell(bcx, bcy);
+        grid[cell_base + bcy * grid_w + bcx] = 2 + b;
       }
     }
     
     // Check collision between player head and bot snakes
-    int head_cx = static_cast<int>(hx / cell_size);
-    int head_cy = static_cast<int>(hy / cell_size);
+    head_cx = static_cast<int>(hx / cell_size);
+    head_cy = static_cast<int>(hy / cell_size);
+    clamp_cell(head_cx, head_cy);
     for (int oy = -1; oy <= 1 && !terminated[i]; ++oy) {
       for (int ox = -1; ox <= 1 && !terminated[i]; ++ox) {
         int ncx = head_cx + ox, ncy = head_cy + oy;
