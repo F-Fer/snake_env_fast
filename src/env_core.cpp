@@ -420,8 +420,10 @@ void BatchedEnv::step(const float* actions) {
     };
     float new_hx = segments_x[base_seg + 0] + std::cos(dir_angle[i]) * static_cast<float>(step_size);
     float new_hy = segments_y[base_seg + 0] + std::sin(dir_angle[i]) * static_cast<float>(step_size);
+
     // Check if head is out of bounds
     if (new_hx < 0 || new_hx >= map_size || new_hy < 0 || new_hy >= map_size) {
+      std::cout << "Head is out of bounds" << std::endl;
       terminated[i] = 1;
       truncated[i] = 1;
       continue;
@@ -429,12 +431,15 @@ void BatchedEnv::step(const float* actions) {
     int head_cx = static_cast<int>(new_hx / cell_size);
     int head_cy = static_cast<int>(new_hy / cell_size);
     clamp_cell(head_cx, head_cy);
+
     // Check if head is in a bot snake
     if (grid[cell_base + head_cy * grid_w + head_cx] >= 2) {
+      std::cout << "Head is in a bot snake" << std::endl;
       terminated[i] = 1;
       truncated[i] = 1;
       continue;
     }
+
     // Clear previous player occupancy
     for (int s = 0; s < segments_count[i]; ++s) {
       int cx = static_cast<int>(segments_x[base_seg + s] / cell_size);
@@ -442,6 +447,7 @@ void BatchedEnv::step(const float* actions) {
       clamp_cell(cx, cy);
       grid[cell_base + cy * grid_w + cx] = -1;
     }
+
     // Update segments[0]
     segments_x[base_seg + 0] = new_hx;
     segments_y[base_seg + 0] = new_hy;
@@ -464,6 +470,7 @@ void BatchedEnv::step(const float* actions) {
         segments_y[base_seg + s] = curr_y + dys * move_ratio;
       }
     }
+
     // Repaint player occupancy
     for (int s = 0; s < segments_count[i]; ++s) {
       int cx = static_cast<int>(segments_x[base_seg + s] / cell_size);
@@ -684,6 +691,7 @@ void BatchedEnv::step(const float* actions) {
         if (ncx < 0 || ncx >= grid_w || ncy < 0 || ncy >= grid_h) continue;
         int occupant = grid[cell_base + ncy * grid_w + ncx];
         if (occupant >= 2) {
+          std::cout << "Head is in a bot snake" << std::endl;
           terminated[i] = 1;
           int hit_bot_local = occupant - 2;
           if (hit_bot_local >= 0 && hit_bot_local < num_bots) {

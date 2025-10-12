@@ -1,11 +1,13 @@
 import numpy as np
 from snake_env_fast._fastenv import BatchedEnv, RenderMode
+import matplotlib.pyplot as plt
+import cv2
 
 
 def make_env():
     return BatchedEnv(
         num_envs=1,
-        mode=RenderMode.Headless,
+        mode=RenderMode.RGB,
         map_size=20,
         step_size=0,
         max_steps=50,
@@ -27,11 +29,11 @@ def to_array(coords):
     return np.array(xs, dtype=np.float32), np.array(ys, dtype=np.float32)
 
 
-def setup_state(env, player_coords, bot_coords):
+def setup_state(env, player_coords, bot_coords, player_angle=0.0, bot_angle=1.5 * np.pi):
     px, py = to_array(player_coords)
     bx, by = to_array(bot_coords)
-    env.debug_set_player_state(0, px, py, 0.0)
-    env.debug_set_bot_state(0, 0, bx, by, 0.0, True)
+    env.debug_set_player_state(0, px, py, player_angle)
+    env.debug_set_bot_state(0, 0, bx, by, bot_angle, True)
     env.debug_rebuild_spatial_hash(0)
     env.reward[0] = 0.0
     env.terminated[0] = 0
@@ -50,8 +52,9 @@ def test_head_to_head_resets_environment():
 
 def test_bot_hits_player_body():
     env = make_env()
-    setup_state(env, [(5, 5), (4, 5), (3, 5)], [(4, 5), (5, 6), (6, 6)])
+    setup_state(env, [(5, 5), (4, 5), (3, 5), (2, 5)], [(3, 4), (3, 3), (3, 2)])
     step(env)
+    print(env.terminated)
     assert env.terminated[0] == 0
     assert env.reward[0] > 0
 
@@ -61,3 +64,6 @@ def test_player_head_hits_bot():
     setup_state(env, [(4, 5), (3, 5), (2, 5)], [(6, 5), (5, 5), (4, 5)])
     step(env)
     assert env.terminated[0] == 1
+
+if __name__ == "__main__":
+    test_bot_hits_player_body()
