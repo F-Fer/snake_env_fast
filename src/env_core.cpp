@@ -29,7 +29,26 @@ static inline float wrap_angle_0_2pi(float a) {
   return a;
 }
 
-BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_size, int max_steps, float max_turn, float eat_radius, unsigned long long seed, int max_segments, int initial_segments, float segment_radius, float min_segment_distance, float cell_size, int num_bots, int max_bot_segments, int num_food)
+BatchedEnv::BatchedEnv(
+  int num_envs,
+  RenderMode mode, 
+  int map_size, 
+  int step_size, 
+  int max_steps, 
+  float max_turn, 
+  float eat_radius, 
+  unsigned long long seed, 
+  int max_segments, 
+  int initial_segments, 
+  float segment_radius, 
+  float min_segment_distance, 
+  float cell_size, 
+  int num_bots, 
+  int max_bot_segments, 
+  int num_food, 
+  float food_reward, 
+  float kill_reward, 
+  float death_reward)
   : N(num_envs),
     // Support both Headless and RGB with the same observation layout for now
     obs_dim(static_cast<int>(ObservationSize::Headless)),
@@ -49,6 +68,9 @@ BatchedEnv::BatchedEnv(int num_envs, RenderMode mode, int map_size, int step_siz
     num_bots(num_bots),
     max_bot_segments(max_bot_segments),
     num_food(std::max(0, num_food)),
+    food_reward(food_reward),
+    kill_reward(kill_reward),
+    death_reward(death_reward),
     single_observation_space(BoxSpace(-INFINITY, INFINITY, {static_cast<int>(ObservationSize::Headless)}, "float32")),
     single_action_space(-max_turn, max_turn, {1}, "float32"),
     render_mode(mode),
@@ -504,7 +526,7 @@ void BatchedEnv::step(const float* actions) {
       }
     }
     if (nearest_food_idx >= 0 && nearest_dist <= eat_radius) {
-      reward[i] = 1.0f;
+      reward[i] += food_reward;
       pending_growth[i] += 1;
       place_food(i, nearest_food_idx);
       nearest_dist = 0.f;
@@ -620,7 +642,10 @@ void BatchedEnv::step(const float* actions) {
       clamp_cell(bot_head_cx, bot_head_cy);
       int occupant = grid[cell_base + bot_head_cy * grid_w + bot_head_cx];
       if (occupant == 1) {
+        std::cout << "Bot is in a player snake" << std::endl;
         bot_alive[bot_idx] = 0;
+        // Reward 
+        reward[i] += kill_reward;
         continue;
       } else if (occupant >= 2 && occupant != (2 + b)) {
         int other_bot_idx = (occupant - 2) + i * num_bots;
@@ -645,7 +670,7 @@ void BatchedEnv::step(const float* actions) {
         grid[cell_base + bcy * grid_w + bcx] = 2 + b;
       }
 
-      // Bot eating logic (can steal player's food)
+      // Bot eating logic
       if (num_food > 0) {
         bool ate = false;
         for (int f = 0; f < num_food && !ate; ++f) {
@@ -697,6 +722,7 @@ void BatchedEnv::step(const float* actions) {
           if (hit_bot_local >= 0 && hit_bot_local < num_bots) {
             bot_alive[i * num_bots + hit_bot_local] = 0;
           }
+          reward[i] += kill_reward;
           break;
         }
       }

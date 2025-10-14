@@ -25,7 +25,7 @@ PYBIND11_MODULE(_fastenv, m) {
         .export_values();
 
     py::class_<BatchedEnv>(m, "BatchedEnv")
-        .def(py::init<int, RenderMode, int, int, int, float, float, unsigned long long, int, int, float, float, float, int, int, int>(),
+        .def(py::init<int, RenderMode, int, int, int, float, float, unsigned long long, int, int, float, float, float, int, int, int, float, float, float>(),
              py::arg("num_envs"),
              py::arg("mode") = RenderMode::Headless,
              py::arg("map_size") = 100,
@@ -41,7 +41,10 @@ PYBIND11_MODULE(_fastenv, m) {
              py::arg("cell_size") = 3.0f,
              py::arg("num_bots") = 3,
              py::arg("max_bot_segments") = 12,
-             py::arg("num_food") = 5)
+             py::arg("num_food") = 5,
+             py::arg("food_reward") = 1.0f,
+             py::arg("kill_reward") = 5.0f,
+             py::arg("death_reward") = -1.0f)
         .def_property_readonly("single_observation_space", [](const BatchedEnv& e){
             py::dict d;
             d["low"] = e.single_observation_space.low;
@@ -105,6 +108,7 @@ PYBIND11_MODULE(_fastenv, m) {
         .def_property_readonly("grid", [](BatchedEnv& e){ return make_view(e.grid, {e.N, e.grid_w, e.grid_h}); })
         .def_property_readonly("grid_w", [](BatchedEnv& e){ return e.grid_w; })
         .def_property_readonly("grid_h", [](BatchedEnv& e){ return e.grid_h; })
+        .def_property_readonly("bot_alive", [](BatchedEnv& e){ return make_view(e.bot_alive, {e.N, e.num_bots}); })
         .def_readonly("N", &BatchedEnv::N)
         .def_readonly("obs_dim", &BatchedEnv::obs_dim)
         .def_readonly("act_dim", &BatchedEnv::act_dim);

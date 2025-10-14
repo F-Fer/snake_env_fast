@@ -1,7 +1,5 @@
 import numpy as np
 from snake_env_fast._fastenv import BatchedEnv, RenderMode
-import matplotlib.pyplot as plt
-import cv2
 
 
 def make_env():
@@ -55,6 +53,7 @@ def test_bot_hits_player_body():
     setup_state(env, [(5, 5), (4, 5), (3, 5), (2, 5)], [(3, 4), (3, 3), (3, 2)])
     step(env)
     print(env.terminated)
+    print(env.bot_alive)
     assert env.terminated[0] == 0
     assert env.reward[0] > 0
 

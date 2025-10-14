@@ -61,6 +61,9 @@ public:
     const int num_bots; // number of bot snakes per env
     const int max_bot_segments; // capacity of segments per bot (smaller than player)
     const int num_food; // number of food items per env
+    const float food_reward; // reward for eating food
+    const float kill_reward; // reward for killing a bot
+    const float death_reward; // reward for dying (negative)
 
     // Space metadata (single env)
     BoxSpace single_observation_space;
@@ -121,7 +124,10 @@ public:
         float cell_size = 3.0f,
         int num_bots = 3,
         int max_bot_segments = 12,
-        int num_food = 5
+        int num_food = 5,
+        float food_reward = 1.0f,
+        float kill_reward = 5.0f,
+        float death_reward = -1.0f
     );
 
     // Disallow copying (large buffers); allow moving if needed (default okay).
