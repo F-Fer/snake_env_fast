@@ -48,7 +48,8 @@ BatchedEnv::BatchedEnv(
   int num_food, 
   float food_reward, 
   float kill_reward, 
-  float death_reward)
+  float death_reward,
+  bool bot_ai_enabled)
   : N(num_envs),
     // Support both Headless and RGB with the same observation layout for now
     obs_dim(static_cast<int>(ObservationSize::Headless)),
@@ -71,6 +72,7 @@ BatchedEnv::BatchedEnv(
     food_reward(food_reward),
     kill_reward(kill_reward),
     death_reward(death_reward),
+    bot_ai_enabled(bot_ai_enabled),
     single_observation_space(BoxSpace(-INFINITY, INFINITY, {static_cast<int>(ObservationSize::Headless)}, "float32")),
     single_action_space(-max_turn, max_turn, {1}, "float32"),
     render_mode(mode),
@@ -577,7 +579,7 @@ void BatchedEnv::step(const float* actions) {
       int bot_target_idx = -1;
       float bot_target_fx = bot_hx;
       float bot_target_fy = bot_hy;
-      if (num_food > 0) {
+      if (num_food > 0 && bot_ai_enabled) {
         float best = std::numeric_limits<float>::infinity();
         const int food_base = i * num_food;
         for (int f = 0; f < num_food; ++f) {
@@ -636,7 +638,7 @@ void BatchedEnv::step(const float* actions) {
         }
       }
 
-      // Bot vs bot collision detection via grid
+      // Bot vs bot & bot vs player collision detection via grid
       int bot_head_cx = static_cast<int>(bot_hx / cell_size);
       int bot_head_cy = static_cast<int>(bot_hy / cell_size);
       clamp_cell(bot_head_cx, bot_head_cy);
@@ -648,6 +650,7 @@ void BatchedEnv::step(const float* actions) {
         reward[i] += kill_reward;
         continue;
       } else if (occupant >= 2 && occupant != (2 + b)) {
+        std::cout << "Bot is in a bot snake" << std::endl;
         int other_bot_idx = (occupant - 2) + i * num_bots;
         const int other_base_seg = other_bot_idx * max_bot_segments;
         const int other_segs = bot_segments_count[other_bot_idx];

@@ -25,7 +25,7 @@ PYBIND11_MODULE(_fastenv, m) {
         .export_values();
 
     py::class_<BatchedEnv>(m, "BatchedEnv")
-        .def(py::init<int, RenderMode, int, int, int, float, float, unsigned long long, int, int, float, float, float, int, int, int, float, float, float>(),
+        .def(py::init<int, RenderMode, int, int, int, float, float, unsigned long long, int, int, float, float, float, int, int, int, float, float, float, bool>(),
              py::arg("num_envs"),
              py::arg("mode") = RenderMode::Headless,
              py::arg("map_size") = 100,
@@ -44,7 +44,8 @@ PYBIND11_MODULE(_fastenv, m) {
              py::arg("num_food") = 5,
              py::arg("food_reward") = 1.0f,
              py::arg("kill_reward") = 5.0f,
-             py::arg("death_reward") = -1.0f)
+             py::arg("death_reward") = -1.0f,
+             py::arg("bot_ai_enabled") = true)
         .def_property_readonly("single_observation_space", [](const BatchedEnv& e){
             py::dict d;
             d["low"] = e.single_observation_space.low;

@@ -1,5 +1,6 @@
 import numpy as np
 from snake_env_fast._fastenv import BatchedEnv, RenderMode
+from tests.utils import show_state
 
 
 def make_env():
@@ -7,7 +8,7 @@ def make_env():
         num_envs=1,
         mode=RenderMode.RGB,
         map_size=20,
-        step_size=0,
+        step_size=1,
         max_steps=50,
         max_turn=np.pi / 4.0,
         eat_radius=0.5,
@@ -18,7 +19,8 @@ def make_env():
         cell_size=1.0,
         num_bots=1,
         max_bot_segments=4,
-        num_food=1,
+        num_food=0,
+        bot_ai_enabled=False,
     )
 
 
@@ -50,10 +52,17 @@ def test_head_to_head_resets_environment():
 
 def test_bot_hits_player_body():
     env = make_env()
-    setup_state(env, [(5, 5), (4, 5), (3, 5), (2, 5)], [(3, 4), (3, 3), (3, 2)])
+    setup_state(env, [(5, 5), (4, 5), (3, 5), (2, 5)], [(3, 4), (3, 3), (3, 2)], bot_angle=0.0, player_angle=0.0)
+    show_state(env)
     step(env)
+    show_state(env)
+    step(env)
+    show_state(env)
+    step(env)
+    show_state(env)
     print(env.terminated)
     print(env.bot_alive)
+    print(env.reward)
     assert env.terminated[0] == 0
     assert env.reward[0] > 0
 

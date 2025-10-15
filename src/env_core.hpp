@@ -64,6 +64,7 @@ public:
     const float food_reward; // reward for eating food
     const float kill_reward; // reward for killing a bot
     const float death_reward; // reward for dying (negative)
+    const bool bot_ai_enabled; // whether to enable bot AI
 
     // Space metadata (single env)
     BoxSpace single_observation_space;
@@ -127,7 +128,8 @@ public:
         int num_food = 5,
         float food_reward = 1.0f,
         float kill_reward = 5.0f,
-        float death_reward = -1.0f
+        float death_reward = -1.0f,
+        bool bot_ai_enabled = true
     );
 
     // Disallow copying (large buffers); allow moving if needed (default okay).
