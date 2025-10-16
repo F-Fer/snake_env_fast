@@ -461,6 +461,7 @@ void BatchedEnv::step(const float* actions) {
       std::cout << "Head is in a bot snake" << std::endl;
       terminated[i] = 1;
       truncated[i] = 1;
+      reward[i] += death_reward;
       continue;
     }
 

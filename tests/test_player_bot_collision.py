@@ -60,9 +60,10 @@ def test_bot_hits_player_body():
 
 def test_player_head_hits_bot():
     env = make_env()
-    setup_state(env, [(4, 5), (3, 5), (2, 5)], [(6, 5), (5, 5), (4, 5)])
+    setup_state(env, [(3, 4), (3, 3), (3, 2)], [(5, 5), (4, 5), (3, 5), (2, 5)], bot_angle=0.0, player_angle=0.5 * np.pi)
     step(env)
     assert env.terminated[0] == 1
+    assert env.reward[0] < 0
 
 if __name__ == "__main__":
-    test_bot_hits_player_body()
+    test_player_head_hits_bot()
