@@ -52,17 +52,8 @@ def test_head_to_head_resets_environment():
 
 def test_bot_hits_player_body():
     env = make_env()
-    setup_state(env, [(5, 5), (4, 5), (3, 5), (2, 5)], [(3, 4), (3, 3), (3, 2)], bot_angle=0.0, player_angle=0.0)
-    show_state(env)
+    setup_state(env, [(5, 5), (4, 5), (3, 5), (2, 5)], [(3, 4), (3, 3), (3, 2)], bot_angle=0.5 * np.pi, player_angle=0.0)
     step(env)
-    show_state(env)
-    step(env)
-    show_state(env)
-    step(env)
-    show_state(env)
-    print(env.terminated)
-    print(env.bot_alive)
-    print(env.reward)
     assert env.terminated[0] == 0
     assert env.reward[0] > 0
 
