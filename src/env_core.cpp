@@ -645,6 +645,15 @@ void BatchedEnv::step(const float* actions) {
       clamp_cell(bot_head_cx, bot_head_cy);
       int occupant = grid[cell_base + bot_head_cy * grid_w + bot_head_cx];
       if (occupant == 1) {
+        // Check if this is the player head
+        if (bot_hx == segments_x[base_seg + 0] && bot_hy == segments_y[base_seg + 0]) {
+          std::cout << "Bot hits player head" << std::endl;
+          bot_alive[bot_idx] = 0;
+          terminated[i] = 1;
+          // Reward 
+          reward[i] += death_reward;
+          continue;
+        }
         std::cout << "Bot is in a player snake" << std::endl;
         bot_alive[bot_idx] = 0;
         // Reward 

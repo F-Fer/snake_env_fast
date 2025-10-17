@@ -29,7 +29,7 @@ def to_array(coords):
     return np.array(xs, dtype=np.float32), np.array(ys, dtype=np.float32)
 
 
-def setup_state(env, player_coords, bot_coords, player_angle=0.0, bot_angle=1.5 * np.pi):
+def setup_state(env, player_coords, bot_coords, player_angle=0.0, bot_angle=0.5 * np.pi):
     px, py = to_array(player_coords)
     bx, by = to_array(bot_coords)
     env.debug_set_player_state(0, px, py, player_angle)
@@ -45,9 +45,18 @@ def step(env):
 
 def test_head_to_head_resets_environment():
     env = make_env()
-    setup_state(env, [(5, 5), (4, 5), (3, 5)], [(5, 5), (6, 5), (7, 5)])
+    # Two cases: Player hits bot head or bot hits player head
+    # Case 1: Player hits bot head
+    setup_state(env, [(5, 5), (6, 5), (7, 5)], [(4, 5), (3, 5), (2, 5)], player_angle=1 * np.pi, bot_angle=0.0)
     step(env)
     assert env.terminated[0] == 1
+    assert env.reward[0] < 0
+    # Case 2: Bot hits player head
+    env.reset([1])
+    setup_state(env, [(5, 5), (6, 5), (7, 5)], [(3, 5), (2, 5), (1, 5)], player_angle=1 * np.pi, bot_angle=0.0)
+    step(env)
+    assert env.terminated[0] == 1
+    assert env.reward[0] < 0
 
 
 def test_bot_hits_player_body():
@@ -66,4 +75,4 @@ def test_player_head_hits_bot():
     assert env.reward[0] < 0
 
 if __name__ == "__main__":
-    test_player_head_hits_bot()
+    test_head_to_head_resets_environment()
