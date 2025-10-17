@@ -447,7 +447,6 @@ void BatchedEnv::step(const float* actions) {
 
     // Check if head is out of bounds
     if (new_hx < 0 || new_hx >= map_size || new_hy < 0 || new_hy >= map_size) {
-      std::cout << "Head is out of bounds" << std::endl;
       terminated[i] = 1;
       truncated[i] = 1;
       continue;
@@ -458,7 +457,6 @@ void BatchedEnv::step(const float* actions) {
 
     // Check if head is in a bot snake
     if (grid[cell_base + head_cy * grid_w + head_cx] >= 2) {
-      std::cout << "Head is in a bot snake" << std::endl;
       terminated[i] = 1;
       truncated[i] = 1;
       reward[i] += death_reward;
@@ -647,20 +645,17 @@ void BatchedEnv::step(const float* actions) {
       if (occupant == 1) {
         // Check if this is the player head
         if (bot_hx == segments_x[base_seg + 0] && bot_hy == segments_y[base_seg + 0]) {
-          std::cout << "Bot hits player head" << std::endl;
           bot_alive[bot_idx] = 0;
           terminated[i] = 1;
           // Reward 
           reward[i] += death_reward;
           continue;
         }
-        std::cout << "Bot is in a player snake" << std::endl;
         bot_alive[bot_idx] = 0;
         // Reward 
         reward[i] += kill_reward;
         continue;
       } else if (occupant >= 2 && occupant != (2 + b)) {
-        std::cout << "Bot is in a bot snake" << std::endl;
         int other_bot_idx = (occupant - 2) + i * num_bots;
         const int other_base_seg = other_bot_idx * max_bot_segments;
         const int other_segs = bot_segments_count[other_bot_idx];
@@ -729,7 +724,6 @@ void BatchedEnv::step(const float* actions) {
         if (ncx < 0 || ncx >= grid_w || ncy < 0 || ncy >= grid_h) continue;
         int occupant = grid[cell_base + ncy * grid_w + ncx];
         if (occupant >= 2) {
-          std::cout << "Head is in a bot snake" << std::endl;
           terminated[i] = 1;
           int hit_bot_local = occupant - 2;
           if (hit_bot_local >= 0 && hit_bot_local < num_bots) {
