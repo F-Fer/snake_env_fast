@@ -797,7 +797,9 @@ void BatchedEnv::set_seed(unsigned long long seed) {
 void BatchedEnv::render_rgb() {
   if (render_mode != RenderMode::RGB) return;
   const int H = 84, W = 84, C = 3;
-  const float scale = 84.0f / static_cast<float>(map_size);
+  const float view_span_world = std::min(static_cast<float>(map_size), 60.0f);
+  const float half_view = view_span_world * 0.5f;
+  const float scale = static_cast<float>(W) / view_span_world;
   // Clear
   std::fill(rgb_image.begin(), rgb_image.end(), static_cast<uint8_t>(0));
   // For each env
@@ -811,10 +813,16 @@ void BatchedEnv::render_rgb() {
       rgb_image[idx + 1] = g;
       rgb_image[idx + 2] = b;
     };
-    // Helper function for drawing a disk
-    auto draw_disk = [&](float cx, float cy, float rad, uint8_t r, uint8_t g, uint8_t b){
-      int sx = static_cast<int>(cx * scale);
-      int sy = static_cast<int>(cy * scale);
+    const int base_seg = i * max_segments;
+    const float cam_x = segments_x[base_seg + 0];
+    const float cam_y = segments_y[base_seg + 0];
+    // Helper function for drawing a disk centered on the camera
+    auto draw_disk = [&](float wx, float wy, float rad, uint8_t r, uint8_t g, uint8_t b){
+      const float dx_world = wx - cam_x;
+      const float dy_world = wy - cam_y;
+      if (std::fabs(dx_world) > (half_view + rad) || std::fabs(dy_world) > (half_view + rad)) return;
+      int sx = static_cast<int>(std::round(dx_world * scale + static_cast<float>(W) * 0.5f));
+      int sy = static_cast<int>(std::round(dy_world * scale + static_cast<float>(H) * 0.5f));
       int rr = std::max(1, static_cast<int>(rad * scale));
       int xmin = std::max(0, sx - rr), xmax = std::min(W - 1, sx + rr);
       int ymin = std::max(0, sy - rr), ymax = std::min(H - 1, sy + rr);
@@ -841,7 +849,6 @@ void BatchedEnv::render_rgb() {
     }
     
     // Draw player body segments (green)
-    const int base_seg = i * max_segments;
     for (int s = 0; s < segments_count[i]; ++s) {
       draw_disk(segments_x[base_seg + s], segments_y[base_seg + s], segment_radius, 80, 200, 80);
     }

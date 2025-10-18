@@ -1,6 +1,5 @@
 import numpy as np
 from snake_env_fast._fastenv import BatchedEnv, RenderMode
-from tests.utils import show_state
 
 
 def make_env():
