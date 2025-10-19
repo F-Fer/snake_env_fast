@@ -6,6 +6,9 @@
 #include <iostream>
 #include <cstdint>
 #include <limits>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 // Simple xorshift64* RNG
 static inline uint64_t xorshift64star(uint64_t& s) {
@@ -881,6 +884,7 @@ void BatchedEnv::render_rgb() {
   const auto& tile = GetHexTile();
   const int tile_stride = HexTileCache::kTileW * 3;
   // For each env
+  #pragma omp parallel for if(N > 1) schedule(static)
   for (int i = 0; i < N; ++i) {
     const int base_img = i * H * W * C;
     const int base_seg = i * max_segments;
