@@ -1,5 +1,6 @@
 #include "env_core.hpp"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <stdexcept>
 #include <iostream>
@@ -28,6 +29,81 @@ static inline float wrap_angle_0_2pi(float a) {
   }
   return a;
 }
+
+namespace {
+
+inline int fast_floor(float x) {
+  int i = static_cast<int>(x);
+  return (x < static_cast<float>(i)) ? (i - 1) : i;
+}
+
+inline int wrap_index(int value, int size) {
+  int m = value % size;
+  return (m < 0) ? (m + size) : m;
+}
+
+struct HexTileCache {
+  static constexpr float kHexRadius = 2.8f;
+  static constexpr float kSqrt3 = 1.73205080757f;
+  static constexpr float kHexWidth = kSqrt3 * kHexRadius;         // world width of one hex
+  static constexpr float kHexVertical = 1.5f * kHexRadius;        // vertical spacing
+  static constexpr float kTileWorldW = kHexWidth * 2.0f;          // repeat every 2 columns
+  static constexpr float kTileWorldH = kHexVertical * 2.0f;       // repeat every 2 rows
+  static constexpr int kTileW = 96;
+  static constexpr int kTileH = 128;
+
+  std::array<uint8_t, kTileW * kTileH * 3> data;
+
+  HexTileCache() { build(); }
+
+  void build() {
+    const float edge_width = kHexRadius * 0.25f;
+    for (int y = 0; y < kTileH; ++y) {
+      const float wy = (static_cast<float>(y) + 0.5f) / static_cast<float>(kTileH) * kTileWorldH;
+      const int row = fast_floor(wy / kHexVertical);
+      const bool row_odd = (row & 1) != 0;
+      for (int x = 0; x < kTileW; ++x) {
+        const float wx = (static_cast<float>(x) + 0.5f) / static_cast<float>(kTileW) * kTileWorldW;
+        const float col_shift = row_odd ? 0.5f : 0.0f;
+        const int col = fast_floor(wx / kHexWidth + col_shift);
+
+        const float center_x = (static_cast<float>(col) - col_shift + 0.5f) * kHexWidth;
+        const float center_y = (static_cast<float>(row) + 0.5f) * kHexVertical;
+        const float lx = wx - center_x;
+        const float ly = wy - center_y;
+        const float ax = std::fabs(lx);
+        const float ay = std::fabs(ly);
+
+        const float edge_primary = ax - kHexWidth * 0.5f;
+        const float edge_diagonal = (kSqrt3 * ax + ay) - kSqrt3 * kHexRadius;
+        const float edge_value = std::max(edge_primary, edge_diagonal);
+        const float dist_to_edge = std::max(-edge_value, 0.0f);
+        float edge_factor = 1.0f - std::min(dist_to_edge / edge_width, 1.0f);
+        if (edge_factor < 0.0f) edge_factor = 0.0f;
+
+        const bool alternate = ((row + col) & 1) != 0;
+        const float base_dark = alternate ? 28.0f : 22.0f;
+        const float base_light = alternate ? 38.0f : 34.0f;
+        float brightness = base_dark + edge_factor * (base_light - base_dark);
+
+        const float vignette = 0.12f;
+        brightness += vignette * base_light;
+
+        const int idx = (y * kTileW + x) * 3;
+        data[idx + 0] = static_cast<uint8_t>(std::clamp(brightness, 0.0f, 255.0f));
+        data[idx + 1] = static_cast<uint8_t>(std::clamp(brightness * 0.92f, 0.0f, 255.0f));
+        data[idx + 2] = static_cast<uint8_t>(std::clamp(brightness * 0.75f, 0.0f, 255.0f));
+      }
+    }
+  }
+};
+
+const HexTileCache& GetHexTile() {
+  static HexTileCache cache;
+  return cache;
+}
+
+} // namespace
 
 BatchedEnv::BatchedEnv(
   int num_envs,
@@ -800,11 +876,42 @@ void BatchedEnv::render_rgb() {
   const float view_span_world = std::min(static_cast<float>(map_size), 60.0f);
   const float half_view = view_span_world * 0.5f;
   const float scale = static_cast<float>(W) / view_span_world;
-  // Clear
-  std::fill(rgb_image.begin(), rgb_image.end(), static_cast<uint8_t>(0));
+  const float inv_scale = 1.0f / scale;
+  const float map_f = static_cast<float>(map_size);
+  const auto& tile = GetHexTile();
+  const int tile_stride = HexTileCache::kTileW * 3;
   // For each env
   for (int i = 0; i < N; ++i) {
     const int base_img = i * H * W * C;
+    const int base_seg = i * max_segments;
+    const float cam_x = segments_x[base_seg + 0];
+    const float cam_y = segments_y[base_seg + 0];
+    const float world_x0 = cam_x - half_view + 0.5f * inv_scale;
+    const float world_y0 = cam_y - half_view + 0.5f * inv_scale;
+
+    // Blit background using cached tile
+    for (int py = 0; py < H; ++py) {
+      const float wy = world_y0 + static_cast<float>(py) * inv_scale;
+      const int tile_y = wrap_index(fast_floor((wy / HexTileCache::kTileWorldH) * HexTileCache::kTileH), HexTileCache::kTileH);
+      const bool inside_y = (wy >= 0.0f && wy < map_f);
+      float wx = world_x0;
+      for (int px = 0; px < W; ++px, wx += inv_scale) {
+        const bool inside = inside_y && wx >= 0.0f && wx < map_f;
+        uint8_t r = 8, g = 8, b = 12;
+        if (inside) {
+          const int tile_x = wrap_index(fast_floor((wx / HexTileCache::kTileWorldW) * HexTileCache::kTileW), HexTileCache::kTileW);
+          const int t_idx = tile_y * tile_stride + tile_x * 3;
+          r = tile.data[t_idx + 0];
+          g = tile.data[t_idx + 1];
+          b = tile.data[t_idx + 2];
+        }
+        const int idx = base_img + (py * W + px) * C;
+        rgb_image[idx + 0] = r;
+        rgb_image[idx + 1] = g;
+        rgb_image[idx + 2] = b;
+      }
+    }
+
     // Helper functions for drawing pixels
     auto put_px = [&](int x, int y, uint8_t r, uint8_t g, uint8_t b){
       if (x < 0 || x >= W || y < 0 || y >= H) return;
@@ -813,9 +920,6 @@ void BatchedEnv::render_rgb() {
       rgb_image[idx + 1] = g;
       rgb_image[idx + 2] = b;
     };
-    const int base_seg = i * max_segments;
-    const float cam_x = segments_x[base_seg + 0];
-    const float cam_y = segments_y[base_seg + 0];
     // Helper function for drawing a disk centered on the camera
     auto draw_disk = [&](float wx, float wy, float rad, uint8_t r, uint8_t g, uint8_t b){
       const float dx_world = wx - cam_x;
