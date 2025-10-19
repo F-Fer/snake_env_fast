@@ -566,10 +566,14 @@ void BatchedEnv::step(const float* actions) {
       float dxs = target_x - curr_x;
       float dys = target_y - curr_y;
       float d = std::sqrt(dxs*dxs + dys*dys);
-      if (d > min_segment_distance && d > 0.0f) {
-        float move_ratio = static_cast<float>(step_size) / d;
-        segments_x[base_seg + s] = curr_x + dxs * move_ratio;
-        segments_y[base_seg + s] = curr_y + dys * move_ratio;
+      if (d > 0.0f) {
+        float excess = d - min_segment_distance;
+        if (excess > 0.0f) {
+          float move = std::min(static_cast<float>(step_size), excess);
+          float move_ratio = move / d;
+          segments_x[base_seg + s] = curr_x + dxs * move_ratio;
+          segments_y[base_seg + s] = curr_y + dys * move_ratio;
+        }
       }
     }
 
@@ -709,10 +713,14 @@ void BatchedEnv::step(const float* actions) {
         float dxs = tx - cx;
         float dys = ty - cy;
         float d = std::sqrt(dxs*dxs + dys*dys);
-        if (d > min_segment_distance && d > 0.0f) {
-          float move_ratio = static_cast<float>(step_size) / d;
-          bot_segments_x[bot_base_seg + s] = cx + dxs * move_ratio;
-          bot_segments_y[bot_base_seg + s] = cy + dys * move_ratio;
+        if (d > 0.0f) {
+          float excess = d - min_segment_distance;
+          if (excess > 0.0f) {
+            float move = std::min(static_cast<float>(step_size), excess);
+            float move_ratio = move / d;
+            bot_segments_x[bot_base_seg + s] = cx + dxs * move_ratio;
+            bot_segments_y[bot_base_seg + s] = cy + dys * move_ratio;
+          }
         }
       }
 

@@ -33,6 +33,8 @@ def test_rendering_speed(num_envs=64):
     start_time = time.time()
     for _ in range(NUM_STEPS):
         env.step(np.zeros((NUM_ENVS, env.act_dim), dtype=np.float32))
+        # Reset environments that might have terminated or truncated
+        env.reset(np.asarray(env.terminated | env.truncated, dtype=np.uint8))
         env.render_rgb()
     end_time = time.time()
     print(f"Number of environments: {NUM_ENVS}")
