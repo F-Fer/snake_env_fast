@@ -3,7 +3,7 @@ requires = ["scikit-build-core>=0.9", "pybind11>=2.11", "numpy>=1.22"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "snake-env-fast"
+name = "snake-gym"
 version = "0.0.1"
 description = "Fast batched C++ snake env with Gymnasium wrapper"
 readme = "README.md"
@@ -16,5 +16,5 @@ dependencies = [
 ]
 
 [tool.scikit-build]
-wheel.packages = ["snake_env_fast"]
+wheel.packages = ["snake_gym_core"]
 cmake.version = ">=3.18"

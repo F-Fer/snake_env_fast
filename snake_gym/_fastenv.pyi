@@ -8,7 +8,7 @@ class RenderMode(IntEnum):
     Headless: int
     RGB: int
 
-class BatchedEnv:
+class SnakeGymCore:
     N: int
     obs_dim: int
     act_dim: int

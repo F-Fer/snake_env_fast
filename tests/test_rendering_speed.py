@@ -1,7 +1,7 @@
 import numpy as np
 import time
 import matplotlib.pyplot as plt
-from snake_env_fast._fastenv import BatchedEnv, RenderMode
+from snake_gym_core.snake_gym_core import SnakeGymCore, RenderMode
 
 
 def test_rendering_speed(num_envs=64):
@@ -10,7 +10,7 @@ def test_rendering_speed(num_envs=64):
     INITIAL_SEGMENTS = 6
     NUM_STEPS = 1000
 
-    env = BatchedEnv(
+    env = SnakeGymCore(
         num_envs=num_envs,
         mode=RenderMode.RGB,
         map_size=MAP_SIZE,

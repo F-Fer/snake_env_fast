@@ -1,5 +1,5 @@
 import argparse
-from snake_env_fast.gym_wrapper import FastVectorEnv
+from snake_gym import SnakeGym
 import cv2
 import numpy as np
 import time
@@ -36,7 +36,7 @@ def main():
     parser.add_argument("--mode", choices=["rgb", "grid"], default="rgb", help="Visualization mode")
     args = parser.parse_args()
 
-    env = FastVectorEnv(1, render_mode="rgb_array")
+    env = SnakeGym(1, render_mode="rgb_array")
     obs, _ = env.reset()
 
     window_name = "Snake Game"

@@ -38,7 +38,7 @@ struct BoxSpace {
 };
 
 // Batched environment: steps N envs at once.
-class BatchedEnv {
+class SnakeGymCore {
 public:
     // Sizes
     const int N;
@@ -109,7 +109,7 @@ public:
     std::vector<int> grid; // [N * grid_w * grid_h]
 
     // Actions are a single angle per env; act_dim is fixed to 1.
-    explicit BatchedEnv(
+    explicit SnakeGymCore(
         int num_envs,
         RenderMode mode = RenderMode::Headless,
         int map_size = 100,
@@ -133,8 +133,8 @@ public:
     );
 
     // Disallow copying (large buffers); allow moving if needed (default okay).
-    BatchedEnv(const BatchedEnv&) = delete;
-    BatchedEnv& operator=(const BatchedEnv&) = delete;
+    SnakeGymCore(const SnakeGymCore&) = delete;
+    SnakeGymCore& operator=(const SnakeGymCore&) = delete;
 
     // Reset only the sub-envs where mask[i] == 1. Mask length must be N.
     void reset(const uint8_t* mask);

@@ -1,9 +1,9 @@
 import numpy as np
-from snake_env_fast._fastenv import BatchedEnv, RenderMode
+from snake_env_fast._fastenv import SnakeGymCore, RenderMode
 
 
 def make_env():
-    return BatchedEnv(
+    return SnakeGymCore(
         num_envs=1,
         mode=RenderMode.RGB,
         map_size=20,

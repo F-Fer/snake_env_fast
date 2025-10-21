@@ -4,12 +4,12 @@ from gymnasium.vector import VectorEnv
 from gymnasium.vector.utils import batch_space
 import numpy as np
 import logging
-from ._fastenv import BatchedEnv, RenderMode
+from snake_gym_core.snake_gym_core import SnakeGymCore, RenderMode
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-class FastVectorEnv(VectorEnv):
+class SnakeGym(VectorEnv):
     metadata = {"render_modes": ["rgb_array", "headless"], "render_fps": 30}
     def __init__(
         self,
@@ -28,7 +28,7 @@ class FastVectorEnv(VectorEnv):
     ):
         self._render_mode = render_mode
         mode = RenderMode.RGB if render_mode == "rgb_array" else RenderMode.Headless
-        self._core = BatchedEnv(
+        self._core = SnakeGymCore(
             num_envs,
             mode,
             map_size,
@@ -101,7 +101,7 @@ class FastVectorEnv(VectorEnv):
         return tuple(frames[i] for i in range(self.num_envs))
 
 if __name__ == "__main__":
-    env = FastVectorEnv(16, render_mode="rgb_array")
+    env = SnakeGym(16, render_mode="rgb_array")
     obs, _ = env.reset()
     print(f"obs shape: {obs.shape}")
     frames = env.render()

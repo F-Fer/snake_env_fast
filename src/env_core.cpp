@@ -108,7 +108,7 @@ const HexTileCache& GetHexTile() {
 
 } // namespace
 
-BatchedEnv::BatchedEnv(
+SnakeGymCore::SnakeGymCore(
   int num_envs,
   RenderMode mode, 
   int map_size, 
@@ -182,7 +182,7 @@ BatchedEnv::BatchedEnv(
     full_reset();
 }
 
-void BatchedEnv::place_food(int env_idx, int food_slot) {
+void SnakeGymCore::place_food(int env_idx, int food_slot) {
   if (num_food <= 0) {
       return;
   }
@@ -215,7 +215,7 @@ void BatchedEnv::place_food(int env_idx, int food_slot) {
   grid[cell_base + cy * grid_w + cx] = 0;
 }
 
-void BatchedEnv::respawn_bot(int env_idx, int bot_idx) {
+void SnakeGymCore::respawn_bot(int env_idx, int bot_idx) {
   const int global_bot_idx = env_idx * num_bots + bot_idx;
   const int bot_base_seg = global_bot_idx * max_bot_segments;
   bot_alive[global_bot_idx] = 1;
@@ -241,7 +241,7 @@ void BatchedEnv::respawn_bot(int env_idx, int bot_idx) {
   }
 }
 
-void BatchedEnv::debug_set_player_state(int env_idx, const std::vector<float>& xs, const std::vector<float>& ys, float angle) {
+void SnakeGymCore::debug_set_player_state(int env_idx, const std::vector<float>& xs, const std::vector<float>& ys, float angle) {
   if (env_idx < 0 || env_idx >= N) {
     throw std::out_of_range("debug_set_player_state env_idx out of range");
   }
@@ -257,7 +257,7 @@ void BatchedEnv::debug_set_player_state(int env_idx, const std::vector<float>& x
   }
 }
 
-void BatchedEnv::debug_set_bot_state(int env_idx, int bot_idx, const std::vector<float>& xs, const std::vector<float>& ys, float angle, bool alive) {
+void SnakeGymCore::debug_set_bot_state(int env_idx, int bot_idx, const std::vector<float>& xs, const std::vector<float>& ys, float angle, bool alive) {
   if (env_idx < 0 || env_idx >= N) {
     throw std::out_of_range("debug_set_bot_state env_idx out of range");
   }
@@ -278,7 +278,7 @@ void BatchedEnv::debug_set_bot_state(int env_idx, int bot_idx, const std::vector
   }
 }
 
-void BatchedEnv::debug_rebuild_spatial_hash(int env_idx) {
+void SnakeGymCore::debug_rebuild_spatial_hash(int env_idx) {
     if (env_idx < 0 || env_idx >= N) {
         throw std::out_of_range("debug_rebuild_spatial_hash env_idx out of range");
     }
@@ -306,7 +306,7 @@ void BatchedEnv::debug_rebuild_spatial_hash(int env_idx) {
     }
 }
 
-void BatchedEnv::full_reset() {
+void SnakeGymCore::full_reset() {
   std::fill(obs.begin(), obs.end(), 0.f);
   std::fill(reward.begin(), reward.end(), 0.f);
   std::fill(terminated.begin(), terminated.end(), 0);
@@ -414,7 +414,7 @@ void BatchedEnv::full_reset() {
   }
 }
 
-void BatchedEnv::reset(const uint8_t* mask) {
+void SnakeGymCore::reset(const uint8_t* mask) {
   for (int i = 0; i < N; ++i) {
     if (mask[i]) {
       reward[i] = 0.f;
@@ -504,7 +504,7 @@ void BatchedEnv::reset(const uint8_t* mask) {
   }
 }
 
-void BatchedEnv::step(const float* actions) {
+void SnakeGymCore::step(const float* actions) {
   for (int i = 0; i < N; ++i) {
     if (terminated[i] || truncated[i]) continue;
 
@@ -869,7 +869,7 @@ void BatchedEnv::step(const float* actions) {
   }
 }
 
-void BatchedEnv::set_seed(unsigned long long seed) {
+void SnakeGymCore::set_seed(unsigned long long seed) {
   // Distinct non-zero seeds per env
   const uint64_t golden = 0x9E3779B97F4A7C15ULL; // splitmix64 constant
   for (int i = 0; i < N; ++i) {
@@ -881,7 +881,7 @@ void BatchedEnv::set_seed(unsigned long long seed) {
 
 // Very simple software renderer: draw head, body, and food as filled circles into NHWC uint8 buffer.
 // Resolution: 84x84, per-env slice is contiguous.
-void BatchedEnv::render_rgb() {
+void SnakeGymCore::render_rgb() {
   if (render_mode != RenderMode::RGB) return;
   const int H = 84, W = 84, C = 3;
   const float view_span_world = std::min(static_cast<float>(map_size), 60.0f);

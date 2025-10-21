@@ -1108,7 +1108,7 @@ wheels = [
 ]
 
 [[package]]
-name = "snake-env-fast"
+name = "snake-gym"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [
