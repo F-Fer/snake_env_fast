@@ -4,6 +4,13 @@ A high-performance, parallel Snake environment implemented in C++ with Python bi
 
 ## Build
 
+For optimal performance, ensure OpenMP is available for parallelization. The build now attempts to auto-detect Homebrew's `libomp` on macOS and will emit a warning if OpenMP is missing (falling back to single-threaded execution).
+
+On macOS (Homebrew):
+- Install libomp: `brew install libomp`
+- If detection still fails, set `OpenMP_ROOT` explicitly (e.g. `export OpenMP_ROOT=/opt/homebrew/opt/libomp`).
+
+Then build/install:
 ```bash
 # Install dependencies
 uv pip install scikit-build-core pybind11
