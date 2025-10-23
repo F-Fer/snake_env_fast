@@ -110,7 +110,6 @@ const HexTileCache& GetHexTile() {
 
 SnakeGymCore::SnakeGymCore(
   int num_envs,
-  RenderMode mode, 
   int map_size, 
   int step_size, 
   int max_steps, 
@@ -130,8 +129,6 @@ SnakeGymCore::SnakeGymCore(
   float death_reward,
   bool bot_ai_enabled)
   : N(num_envs),
-    // Support both Headless and RGB with the same observation layout for now
-    obs_dim(static_cast<int>(ObservationSize::Headless)),
     act_dim(1),
     map_size(map_size),
     step_size(step_size),
@@ -152,9 +149,6 @@ SnakeGymCore::SnakeGymCore(
     kill_reward(kill_reward),
     death_reward(death_reward),
     bot_ai_enabled(bot_ai_enabled),
-    single_observation_space(BoxSpace(-INFINITY, INFINITY, {static_cast<int>(ObservationSize::Headless)}, "float32")),
-    single_action_space(-max_turn, max_turn, {1}, "float32"),
-    render_mode(mode),
     obs(N * static_cast<int>(ObservationSize::Headless), 0.f),
     reward(N, 0.f),
     terminated(N, 0),
@@ -164,7 +158,7 @@ SnakeGymCore::SnakeGymCore(
     food_x(static_cast<size_t>(N) * static_cast<size_t>(num_food), 0.f),
     food_y(static_cast<size_t>(N) * static_cast<size_t>(num_food), 0.f),
     steps_since_reset(N, 0),
-    rgb_image(mode == RenderMode::RGB ? N * 84 * 84 * 3 : 0, 0),
+    rgb_image(N * 84 * 84 * 3, 0),
     rng_state(N, 0ULL),
     segments_x(static_cast<size_t>(N) * static_cast<size_t>(max_segments), 0.f),
     segments_y(static_cast<size_t>(N) * static_cast<size_t>(max_segments), 0.f),
@@ -374,43 +368,40 @@ void SnakeGymCore::full_reset() {
     }
 
     // Fill observation (7D)
-    if (obs_dim >= 1) {
-      const int base = i * obs_dim;
-      const int base_seg = i * max_segments;
-      const float hx = segments_x[base_seg + 0];
-      const float hy = segments_y[base_seg + 0];
-      float nearest_fx = 0.f;
-      float nearest_fy = 0.f;
-      float nearest_dist = 0.f;
-      if (num_food > 0) {
-        nearest_dist = std::numeric_limits<float>::infinity();
-        const int food_base = i * num_food;
-        for (int f = 0; f < num_food; ++f) {
-          const float fx = food_x[food_base + f];
-          const float fy = food_y[food_base + f];
-          const float dfx = fx - hx;
-          const float dfy = fy - hy;
-          const float d = std::sqrt(dfx*dfx + dfy*dfy);
-          if (d < nearest_dist) {
-            nearest_dist = d;
-            nearest_fx = fx;
-            nearest_fy = fy;
-          }
-        }
-        if (!std::isfinite(nearest_dist)) {
-          nearest_dist = 0.f;
-          nearest_fx = hx;
-          nearest_fy = hy;
+    const int base = i * static_cast<int>(ObservationSize::Headless);
+    hx = segments_x[base_seg + 0];
+    hy = segments_y[base_seg + 0];
+    float nearest_fx = 0.f;
+    float nearest_fy = 0.f;
+    float nearest_dist = 0.f;
+    if (num_food > 0) {
+      nearest_dist = std::numeric_limits<float>::infinity();
+      const int food_base = i * num_food;
+      for (int f = 0; f < num_food; ++f) {
+        const float fx = food_x[food_base + f];
+        const float fy = food_y[food_base + f];
+        const float dfx = fx - hx;
+        const float dfy = fy - hy;
+        const float d = std::sqrt(dfx*dfx + dfy*dfy);
+        if (d < nearest_dist) {
+          nearest_dist = d;
+          nearest_fx = fx;
+          nearest_fy = fy;
         }
       }
-      obs[base + 0] = hx;
-      obs[base + 1] = hy;
-      obs[base + 2] = dir_angle[i];
-      obs[base + 3] = static_cast<float>(segments_count[i]);
-      obs[base + 4] = nearest_fx;
-      obs[base + 5] = nearest_fy;
-      obs[base + 6] = nearest_dist;
+      if (!std::isfinite(nearest_dist)) {
+        nearest_dist = 0.f;
+        nearest_fx = hx;
+        nearest_fy = hy;
+      }
     }
+    obs[base + 0] = hx;
+    obs[base + 1] = hy;
+    obs[base + 2] = dir_angle[i];
+    obs[base + 3] = static_cast<float>(segments_count[i]);
+    obs[base + 4] = nearest_fx;
+    obs[base + 5] = nearest_fy;
+    obs[base + 6] = nearest_dist;
   }
 }
 
@@ -464,42 +455,41 @@ void SnakeGymCore::reset(const uint8_t* mask) {
         }
       }
 
-      if (obs_dim >= 1) {
-          const int base = i * obs_dim;
-          const float hx = segments_x[base_seg + 0];
-          const float hy = segments_y[base_seg + 0];
-          float nearest_fx = hx;
-          float nearest_fy = hy;
-          float nearest_dist = 0.f;
-          if (num_food > 0) {
-              nearest_dist = std::numeric_limits<float>::infinity();
-              const int food_base = i * num_food;
-              for (int f = 0; f < num_food; ++f) {
-                  const float fx = food_x[food_base + f];
-                  const float fy = food_y[food_base + f];
-                  const float dfx = fx - hx;
-                  const float dfy = fy - hy;
-                  const float d = std::sqrt(dfx*dfx + dfy*dfy);
-                  if (d < nearest_dist) {
-                      nearest_dist = d;
-                      nearest_fx = fx;
-                      nearest_fy = fy;
-                  }
-              }
-              if (!std::isfinite(nearest_dist)) {
-                  nearest_dist = 0.f;
-                  nearest_fx = hx;
-                  nearest_fy = hy;
+      // Fill observation (7D)
+      const int base = i * static_cast<int>(ObservationSize::Headless);
+      hx = segments_x[base_seg + 0];
+      hy = segments_y[base_seg + 0];
+      float nearest_fx = hx;
+      float nearest_fy = hy;
+      float nearest_dist = 0.f;
+      if (num_food > 0) {
+          nearest_dist = std::numeric_limits<float>::infinity();
+          const int food_base = i * num_food;
+          for (int f = 0; f < num_food; ++f) {
+              const float fx = food_x[food_base + f];
+              const float fy = food_y[food_base + f];
+              const float dfx = fx - hx;
+              const float dfy = fy - hy;
+              const float d = std::sqrt(dfx*dfx + dfy*dfy);
+              if (d < nearest_dist) {
+                  nearest_dist = d;
+                  nearest_fx = fx;
+                  nearest_fy = fy;
               }
           }
-          obs[base + 0] = hx;
-          obs[base + 1] = hy;
-          obs[base + 2] = dir_angle[i];
-          obs[base + 3] = static_cast<float>(segments_count[i]);
-          obs[base + 4] = nearest_fx;
-          obs[base + 5] = nearest_fy;
-          obs[base + 6] = nearest_dist;
+          if (!std::isfinite(nearest_dist)) {
+              nearest_dist = 0.f;
+              nearest_fx = hx;
+              nearest_fy = hy;
+          }
       }
+      obs[base + 0] = hx;
+      obs[base + 1] = hy;
+      obs[base + 2] = dir_angle[i];
+      obs[base + 3] = static_cast<float>(segments_count[i]);
+      obs[base + 4] = nearest_fx;
+      obs[base + 5] = nearest_fy;
+      obs[base + 6] = nearest_dist;
     }
   }
 }
@@ -829,43 +819,41 @@ void SnakeGymCore::step(const float* actions) {
     }
 
     // Write observation
-    if (obs_dim >= 1) {
-      const int base = i * obs_dim;
-      float final_fx = hx;
-      float final_fy = hy;
-      float final_dist = 0.f;
-      if (num_food > 0) {
-        float best = std::numeric_limits<float>::infinity();
-        const int food_base_obs = i * num_food;
-        const float phx = segments_x[base_seg + 0];
-        const float phy = segments_y[base_seg + 0];
-        for (int f = 0; f < num_food; ++f) {
-          const float fx = food_x[food_base_obs + f];
-          const float fy = food_y[food_base_obs + f];
-          const float dfx = fx - phx;
-          const float dfy = fy - phy;
-          const float d = std::sqrt(dfx*dfx + dfy*dfy);
-          if (d < best) {
-            best = d;
-            final_fx = fx;
-            final_fy = fy;
-            final_dist = d;
-          }
-        }
-        if (!std::isfinite(final_dist)) {
-          final_dist = 0.f;
-          final_fx = phx;
-          final_fy = phy;
+    const int base = i * static_cast<int>(ObservationSize::Headless);
+    float final_fx = hx;
+    float final_fy = hy;
+    float final_dist = 0.f;
+    if (num_food > 0) {
+      float best = std::numeric_limits<float>::infinity();
+      const int food_base_obs = i * num_food;
+      const float phx = segments_x[base_seg + 0];
+      const float phy = segments_y[base_seg + 0];
+      for (int f = 0; f < num_food; ++f) {
+        const float fx = food_x[food_base_obs + f];
+        const float fy = food_y[food_base_obs + f];
+        const float dfx = fx - phx;
+        const float dfy = fy - phy;
+        const float d = std::sqrt(dfx*dfx + dfy*dfy);
+        if (d < best) {
+          best = d;
+          final_fx = fx;
+          final_fy = fy;
+          final_dist = d;
         }
       }
-      obs[base + 0] = segments_x[base_seg + 0];
-      obs[base + 1] = segments_y[base_seg + 0];
-      obs[base + 2] = dir_angle[i];
-      obs[base + 3] = static_cast<float>(segments_count[i]);
-      obs[base + 4] = final_fx;
-      obs[base + 5] = final_fy;
-      obs[base + 6] = final_dist;
+      if (!std::isfinite(final_dist)) {
+        final_dist = 0.f;
+        final_fx = phx;
+        final_fy = phy;
+      }
     }
+    obs[base + 0] = segments_x[base_seg + 0];
+    obs[base + 1] = segments_y[base_seg + 0];
+    obs[base + 2] = dir_angle[i];
+    obs[base + 3] = static_cast<float>(segments_count[i]);
+    obs[base + 4] = final_fx;
+    obs[base + 5] = final_fy;
+    obs[base + 6] = final_dist;
   }
 }
 
@@ -882,7 +870,6 @@ void SnakeGymCore::set_seed(unsigned long long seed) {
 // Very simple software renderer: draw head, body, and food as filled circles into NHWC uint8 buffer.
 // Resolution: 84x84, per-env slice is contiguous.
 void SnakeGymCore::render_rgb() {
-  if (render_mode != RenderMode::RGB) return;
   const int H = 84, W = 84, C = 3;
   const float view_span_world = std::min(static_cast<float>(map_size), 60.0f);
   const float half_view = view_span_world * 0.5f;

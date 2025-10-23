@@ -25,9 +25,8 @@ PYBIND11_MODULE(snake_gym_core, m) {
         .export_values();
 
     py::class_<SnakeGymCore>(m, "SnakeGymCore")
-        .def(py::init<int, RenderMode, int, int, int, float, float, unsigned long long, int, int, float, float, float, int, int, int, float, float, float, bool>(),
+        .def(py::init<int, int, int, int, float, float, unsigned long long, int, int, float, float, float, int, int, int, float, float, float, bool>(),
              py::arg("num_envs"),
-             py::arg("mode") = RenderMode::Headless,
              py::arg("map_size") = 100,
              py::arg("step_size") = 1,
              py::arg("max_steps") = 1000,
@@ -46,26 +45,6 @@ PYBIND11_MODULE(snake_gym_core, m) {
              py::arg("kill_reward") = 5.0f,
              py::arg("death_reward") = -1.0f,
              py::arg("bot_ai_enabled") = true)
-        .def_property_readonly("single_observation_space", [](const SnakeGymCore& e){
-            py::dict d;
-            d["low"] = e.single_observation_space.low;
-            d["high"] = e.single_observation_space.high;
-            py::list shape;
-            for (int s : e.single_observation_space.shape) shape.append(s);
-            d["shape"] = shape;
-            d["dtype"] = e.single_observation_space.dtype;
-            return d;
-        })
-        .def_property_readonly("single_action_space", [](const SnakeGymCore& e){
-            py::dict d;
-            d["low"] = e.single_action_space.low;
-            d["high"] = e.single_action_space.high;
-            py::list shape;
-            for (int s : e.single_action_space.shape) shape.append(s);
-            d["shape"] = shape;
-            d["dtype"] = e.single_action_space.dtype;
-            return d;
-        })
         .def("reset", [](SnakeGymCore& e, py::array_t<uint8_t, py::array::c_style|py::array::forcecast> mask){
             if (mask.ndim()!=1 || mask.shape(0)!=e.N) throw std::runtime_error("mask shape mismatch");
             py::gil_scoped_release release;
@@ -98,7 +77,7 @@ PYBIND11_MODULE(snake_gym_core, m) {
             e.debug_set_bot_state(env_idx, bot_idx, vx, vy, angle, alive);
         }, py::arg("env_idx"), py::arg("bot_idx"), py::arg("xs"), py::arg("ys"), py::arg("angle"), py::arg("alive"))
         .def("debug_rebuild_spatial_hash", &SnakeGymCore::debug_rebuild_spatial_hash, py::arg("env_idx"))
-        .def_property_readonly("obs", [](SnakeGymCore& e){ return make_view(e.obs, {e.N, e.obs_dim}); })
+        .def_property_readonly("obs", [](SnakeGymCore& e){ return make_view(e.obs, {e.N, static_cast<int>(ObservationSize::Headless)}); })
         .def_property_readonly("rgb", [](SnakeGymCore& e){ return py::array(py::buffer_info(
             e.rgb_image.data(), sizeof(uint8_t), py::format_descriptor<uint8_t>::format(),
             4, {e.N, 84, 84, 3}, {static_cast<ssize_t>(84*84*3), static_cast<ssize_t>(84*3), static_cast<ssize_t>(3), static_cast<ssize_t>(1)}
@@ -111,6 +90,6 @@ PYBIND11_MODULE(snake_gym_core, m) {
         .def_property_readonly("grid_h", [](SnakeGymCore& e){ return e.grid_h; })
         .def_property_readonly("bot_alive", [](SnakeGymCore& e){ return make_view(e.bot_alive, {e.N, e.num_bots}); })
         .def_readonly("N", &SnakeGymCore::N)
-        .def_readonly("obs_dim", &SnakeGymCore::obs_dim)
-        .def_readonly("act_dim", &SnakeGymCore::act_dim);
+        .def_readonly("act_dim", &SnakeGymCore::act_dim)
+        .def_readonly("max_turn", &SnakeGymCore::max_turn);
 }

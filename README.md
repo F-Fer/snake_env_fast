@@ -84,6 +84,5 @@ uv run pytest tests/test_player_bot_collision.py
 
 ## TODO
 
-- RGB rendering focus on snake head
 - More realistic rendering
-- Make sure player snake can kill bots
+- Make snake colors changable

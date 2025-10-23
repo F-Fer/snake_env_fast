@@ -1,5 +1,5 @@
 import numpy as np
-from snake_env_fast._fastenv import SnakeGymCore, RenderMode
+from snake_gym_core.snake_gym_core import SnakeGymCore, RenderMode
 
 
 def make_env():

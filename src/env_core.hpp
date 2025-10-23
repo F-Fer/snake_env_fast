@@ -13,28 +13,8 @@ enum class RenderMode { Headless, RGB };
 // Define the observation size for each render mode
 enum class ObservationSize {
     // head_x, head_y, dir_angle, snake_len, nearest_food_x, nearest_food_y, nearest_food_dist
-    Headless = 7
-};
-
-// Minimal "Box" space description for introspection via bindings.
-// This is *not* used in hot loops; it's metadata.
-struct BoxSpace {
-    float low;
-    float high;
-    std::vector<int> shape;
-    const char* dtype;
-
-    BoxSpace(
-        float low_, 
-        float high_, 
-        std::vector<int> shape_, 
-        const char* dtype_ = "float32"
-    ) : 
-        low(low_), 
-        high(high_), 
-        shape(std::move(shape_)), 
-        dtype(dtype_) 
-    {}
+    Headless = 7,
+    RGB = 84 * 84 * 3,
 };
 
 // Batched environment: steps N envs at once.
@@ -42,7 +22,6 @@ class SnakeGymCore {
 public:
     // Sizes
     const int N;
-    const int obs_dim;
     const int act_dim;
 
     // Game parameters
@@ -66,13 +45,6 @@ public:
     const float death_reward; // reward for dying (negative)
     const bool bot_ai_enabled; // whether to enable bot AI
 
-    // Space metadata (single env)
-    BoxSpace single_observation_space;
-    BoxSpace single_action_space;
-
-    // Mode for rendering
-    RenderMode render_mode;
-
     // Output buffers (returned to Python as zero-copy views)
     std::vector<float> obs;        // [N * obs_dim]
     std::vector<float> reward;     // [N]
@@ -86,7 +58,7 @@ public:
     std::vector<float> food_y;     // [N * num_food]
     std::vector<int>   steps_since_reset; // [N]
 
-    std::vector<uint8_t> rgb_image; // [N * H * W * 3] if render_mode is RenderMode::RGB
+    std::vector<uint8_t> rgb_image; // [N * 84 * 84 * 3]
 
     // RNG per env for deterministic spawning
     std::vector<unsigned long long> rng_state; // simple LCG or seed storage
@@ -111,7 +83,6 @@ public:
     // Actions are a single angle per env; act_dim is fixed to 1.
     explicit SnakeGymCore(
         int num_envs,
-        RenderMode mode = RenderMode::Headless,
         int map_size = 100,
         int step_size = 1,
         int max_steps = 1000,
