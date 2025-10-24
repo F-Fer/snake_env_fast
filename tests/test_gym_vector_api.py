@@ -155,3 +155,15 @@ def test_autoreset_on_termination():
     finally:
         env.close()
 
+if __name__ == "__main__":
+    env = SnakeGym(num_envs=3, render_mode=None)
+    print(env.render_mode)
+    print(env.single_observation_space.shape)
+    print(env.single_observation_space.dtype)
+    env = SnakeGym(num_envs=3, render_mode="rgb_array")
+    print(env.render_mode)
+    print(env.single_observation_space.shape)
+    print(env.single_observation_space.dtype)
+
+
+

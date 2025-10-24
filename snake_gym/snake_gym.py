@@ -48,12 +48,12 @@ class SnakeGym(VectorEnv):
         if self._render_mode == RenderMode.RGB:
             obs_dim = [84, 84, 3]
             self.single_observation_space = spaces.Box(
-                low=-np.inf, high=np.inf, shape=obs_dim, dtype=np.float32
+                low=0, high=255, shape=obs_dim, dtype=np.uint8
             )
         else:
             obs_dim = [7]
             self.single_observation_space = spaces.Box(
-                low=0, high=255, shape=obs_dim, dtype=np.uint8
+                low=np.inf, high=np.inf, shape=obs_dim, dtype=np.float32
             )
         self.single_action_space = spaces.Box(
             low=np.float32(-self._core.max_turn),

@@ -91,5 +91,6 @@ PYBIND11_MODULE(snake_gym_core, m) {
         .def_property_readonly("bot_alive", [](SnakeGymCore& e){ return make_view(e.bot_alive, {e.N, e.num_bots}); })
         .def_readonly("N", &SnakeGymCore::N)
         .def_readonly("act_dim", &SnakeGymCore::act_dim)
-        .def_readonly("max_turn", &SnakeGymCore::max_turn);
+        .def_readonly("max_turn", &SnakeGymCore::max_turn)
+        .def_readonly("max_steps", &SnakeGymCore::max_steps);
 }
