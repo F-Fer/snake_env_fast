@@ -3,6 +3,61 @@ from snake_gym import SnakeGym
 import cv2
 import numpy as np
 import time
+import os
+from dataclasses import dataclass
+from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from huggingface_hub import repo_exists
+
+features_schema = {
+    "observation.state": {
+        "dtype": "float32",
+        "shape": [7],
+        "names": ["head_x", "head_y", "dir_angle", "snake_len", "nearest_food_x", "nearest_food_y", "nearest_food_dist"],
+    },
+    "reward": {
+        "dtype": "float32",
+        "shape": [1],
+        "names": ["reward"],
+    },
+    "terminated": {
+        "dtype": "bool",
+        "shape": [1],
+        "names": ["terminated"],
+    },
+    "truncated": {
+        "dtype": "bool",
+        "shape": [1],
+        "names": ["truncated"],
+    },
+    "action": {
+        "dtype": "float32",
+        "shape": [1],
+        "names": ["action_val"],
+    },
+    "observation.images.main_cam": {
+        "dtype": "video",
+        "shape": [84, 84, 3], # (Height, Width, Channels)
+        "names": ["height", "width", "channel"],
+        "info": {"video.fps": 30},
+    }
+}
+
+@dataclass
+class RecordFrame:
+    state: np.ndarray # [head_x, head_y, dir_angle, snake_len, nearest_food_x, nearest_food_y, nearest_food_dist]
+    frame: np.ndarray
+    action: np.ndarray
+    reward: float
+    terminated: bool
+    truncated: bool
+    def to_dict(self):
+        return {
+            "frame": self.frame,
+            "action": self.action,
+            "reward": self.reward,
+            "terminated": self.terminated,
+            "truncated": self.truncated,
+        }
 
 # Global mouse position
 mouse_x, mouse_y = 0, 0
@@ -34,7 +89,23 @@ def render_grid(env_core, scale_factor):
 def main():
     parser = argparse.ArgumentParser(description="Snake viewer")
     parser.add_argument("--mode", choices=["rgb", "grid"], default="rgb", help="Visualization mode")
+    parser.add_argument("--record", action="store_true", help="Record the game to lerobot format")
+    parser.add_argument("--repo-id", type=str, default="snake-gym", help="Repository ID for Lerobot")
     args = parser.parse_args()
+    if args.record:
+        if not args.repo_id:
+            parser.error("--repo-id is required for recording")
+        
+        # Check if the dataset already exists
+        exists_on_hub = repo_exists(args.repo_id, repo_type="dataset")
+        local_path = f"~/.cache/huggingface/lerobot/{args.repo_id}"
+        if not exists_on_hub or not os.path.exists(local_path):
+            dataset = LeRobotDataset.create(repo_id=args.repo_id, fps=30, features=features_schema)
+        else:
+            dataset = LeRobotDataset(repo_id=args.repo_id)
+
+        # Initialize the record frames
+        last_frame: RecordFrame = None
 
     num_envs = 2
     env = SnakeGym(num_envs=num_envs, render_mode="rgb_array")
@@ -74,6 +145,11 @@ def main():
             frame = frames[0]
             frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             frame_scaled = cv2.resize(frame_bgr, (window_w, window_h), interpolation=cv2.INTER_NEAREST)
+            if args.record:
+                if last_frame is not None:
+                    last_frame.action = action
+                    dataset.add_frame(last_frame.to_dict())
+                last_frame = RecordFrame(state=env._core.obs[0], frame=frame, action=0.0, reward=rew[0], terminated=term[0], truncated=trunc[0])
         else:
             core = env._core
             grid_img = render_grid(core, scale_factor)
@@ -88,14 +164,20 @@ def main():
 
         if term.any() or trunc.any():
             print(f"Game Over! Final score: {int(env._core.obs[0][3]) - 4}")
-            obs, _ = env.reset()
+            if args.record:
+                dataset.save_episode()
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
+            if args.record:
+                dataset.close()
             break
         elif key == ord('r'):
             obs, _ = env.reset()
             print("Manual reset")
+            if args.record:
+                # TODO: clear frame buffer
+                pass
         time.sleep(0.1)
 
     cv2.destroyAllWindows()
