@@ -3,7 +3,7 @@ from snake_gym import SnakeGym
 import cv2
 import numpy as np
 import time
-import os
+from pathlib import Path
 from dataclasses import dataclass
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from huggingface_hub import repo_exists
@@ -11,52 +11,57 @@ from huggingface_hub import repo_exists
 features_schema = {
     "observation.state": {
         "dtype": "float32",
-        "shape": [7],
+        "shape": (7,),
         "names": ["head_x", "head_y", "dir_angle", "snake_len", "nearest_food_x", "nearest_food_y", "nearest_food_dist"],
     },
     "reward": {
         "dtype": "float32",
-        "shape": [1],
+        "shape": (1,),
         "names": ["reward"],
     },
     "terminated": {
         "dtype": "bool",
-        "shape": [1],
+        "shape": (1,),
         "names": ["terminated"],
     },
     "truncated": {
         "dtype": "bool",
-        "shape": [1],
+        "shape": (1,),
         "names": ["truncated"],
     },
     "action": {
         "dtype": "float32",
-        "shape": [1],
+        "shape": (1,),
         "names": ["action_val"],
     },
     "observation.images.main_cam": {
         "dtype": "video",
-        "shape": [84, 84, 3], # (Height, Width, Channels)
+        "shape": (84, 84, 3), # (Height, Width, Channels)
         "names": ["height", "width", "channel"],
         "info": {"video.fps": 30},
     }
 }
 
+task = "Play the snake game."
+
 @dataclass
 class RecordFrame:
     state: np.ndarray # [head_x, head_y, dir_angle, snake_len, nearest_food_x, nearest_food_y, nearest_food_dist]
-    frame: np.ndarray
+    image: np.ndarray
     action: np.ndarray
-    reward: float
-    terminated: bool
-    truncated: bool
+    reward: np.ndarray
+    terminated: np.ndarray
+    truncated: np.ndarray
+    task: str
     def to_dict(self):
         return {
-            "frame": self.frame,
-            "action": self.action,
-            "reward": self.reward,
-            "terminated": self.terminated,
-            "truncated": self.truncated,
+            "observation.state": np.asarray(self.state, dtype=np.float32).reshape(7),
+            "observation.images.main_cam": self.image,
+            "action": np.asarray(self.action, dtype=np.float32).reshape(1),
+            "reward": np.asarray(self.reward, dtype=np.float32).reshape(1),
+            "terminated": np.asarray(self.terminated, dtype=np.bool_).reshape(1),
+            "truncated": np.asarray(self.truncated, dtype=np.bool_).reshape(1),
+            "task": self.task,
         }
 
 # Global mouse position
@@ -98,8 +103,8 @@ def main():
         
         # Check if the dataset already exists
         exists_on_hub = repo_exists(args.repo_id, repo_type="dataset")
-        local_path = f"~/.cache/huggingface/lerobot/{args.repo_id}"
-        if not exists_on_hub or not os.path.exists(local_path):
+        local_path = Path.home() / ".cache" / "huggingface" / "lerobot" / args.repo_id
+        if not exists_on_hub and not local_path.exists():
             dataset = LeRobotDataset.create(repo_id=args.repo_id, fps=30, features=features_schema)
         else:
             dataset = LeRobotDataset(repo_id=args.repo_id)
@@ -147,9 +152,20 @@ def main():
             frame_scaled = cv2.resize(frame_bgr, (window_w, window_h), interpolation=cv2.INTER_NEAREST)
             if args.record:
                 if last_frame is not None:
-                    last_frame.action = action
+                    last_frame.action = action[0]
                     dataset.add_frame(last_frame.to_dict())
-                last_frame = RecordFrame(state=env._core.obs[0], frame=frame, action=0.0, reward=rew[0], terminated=term[0], truncated=trunc[0])
+                last_frame = RecordFrame(
+                    state=np.copy(env._core.obs[0]),
+                    image=frame.copy(),
+                    action=np.zeros(1, dtype=np.float32),
+                    reward=np.zeros(1, dtype=np.float32),
+                    terminated=np.zeros(1, dtype=np.bool_),
+                    truncated=np.zeros(1, dtype=np.bool_),
+                    task=task,
+                )
+                last_frame.reward[0] = rew[0]
+                last_frame.terminated[0] = term[0]
+                last_frame.truncated[0] = trunc[0]
         else:
             core = env._core
             grid_img = render_grid(core, scale_factor)
@@ -170,14 +186,13 @@ def main():
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
             if args.record:
-                dataset.close()
+                dataset.finalize()
             break
         elif key == ord('r'):
             obs, _ = env.reset()
             print("Manual reset")
             if args.record:
-                # TODO: clear frame buffer
-                pass
+                dataset.clear_episode_buffer()
         time.sleep(0.1)
 
     cv2.destroyAllWindows()
