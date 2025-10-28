@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import time
 from pathlib import Path
+import threading
 from dataclasses import dataclass
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from huggingface_hub import repo_exists
@@ -43,6 +44,7 @@ features_schema = {
 }
 
 task = "Play the snake game."
+min_episode_length = 15
 
 @dataclass
 class RecordFrame:
@@ -181,12 +183,19 @@ def main():
         if term.any() or trunc.any():
             print(f"Game Over! Final score: {int(env._core.obs[0][3]) - 4}")
             if args.record:
-                dataset.save_episode()
+                if dataset.episode_buffer["size"] >= min_episode_length:
+                    dataset.save_episode()
+                    threading.Thread(target=dataset.push_to_hub).start()
+                else:
+                    print(f"Episode length {dataset.episode_buffer['size']} is less than {min_episode_length}")
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
             if args.record:
+                if dataset.episode_buffer["size"] >= min_episode_length:
+                    dataset.save_episode()
                 dataset.finalize()
+                dataset.push_to_hub()
             break
         elif key == ord('r'):
             obs, _ = env.reset()
