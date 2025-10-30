@@ -7,7 +7,7 @@ from pathlib import Path
 import threading
 from dataclasses import dataclass
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
-from huggingface_hub import repo_exists
+from huggingface_hub import repo_exists, interpreter_login
 
 features_schema = {
     "observation.state": {
@@ -102,7 +102,10 @@ def main():
     if args.record:
         if not args.repo_id:
             parser.error("--repo-id is required for recording")
-        
+
+        # Check if user is logged in
+        interpreter_login(new_session=False)
+
         # Check if the dataset already exists
         exists_on_hub = repo_exists(args.repo_id, repo_type="dataset")
         local_path = Path.home() / ".cache" / "huggingface" / "lerobot" / args.repo_id
