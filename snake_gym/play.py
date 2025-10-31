@@ -141,9 +141,7 @@ def main():
             target_angle = np.arctan2(dy, dx)
             current_angle = env._core.obs[0][2]
             angle_diff = target_angle - current_angle
-            angle_diff = np.arctan2(np.sin(angle_diff), np.cos(angle_diff))
-            max_turn = np.pi / 4.0
-            action_val = np.clip(angle_diff, -max_turn, max_turn)
+            action_val = np.arctan2(np.sin(angle_diff), np.cos(angle_diff))
         else:
             action_val = 0.0
 
