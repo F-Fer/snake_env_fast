@@ -1,4 +1,4 @@
-# Snake Environment (Fast C++ Implementation)
+# Snake Environment
 
 A high-performance, parallel Snake environment implemented in C++ with Python bindings, designed for reinforcement learning.
 
@@ -19,28 +19,10 @@ uv pip install scikit-build-core pybind11
 uv run --refresh python -m pip install -e .  
 ```
 
-## Quick Start
-
-```python
-from snake_env_fast.gym_wrapper import FastVectorEnv
-import numpy as np
-
-# Environment setup
-env = FastVectorEnv(1, render_mode="rgb_array")
-obs, _ = env.reset()
-
-# Step through environment
-for _ in range(100):
-    actions = np.random.uniform(-0.5, 0.5, (env.N, env.act_dim)).astype(np.float32)
-    env.step(actions)
-    obs = env.obs  # Shape: (N, 7)
-    reward = env.reward
-```
-
 ## Play Interactively
 
 ```bash
-uv run python -m snake_env_fast.play
+uv run python snake_gym/play.py
 ```
 
 ## Configuration
@@ -74,7 +56,7 @@ Key parameters:
 | `max_bot_segments` | int | 12 | Capacity of each bot snake |
 | `num_food` | int | 5 | Food items maintained per environment |
 
-> All parameters are exposed via `snake_env_fast._fastenv.BatchedEnv` and forwarded by the `FastVectorEnv` wrapper. Floating-point defaults are expressed in world units.
+> All parameters are exposed via `snake_gym_core.snake_gym_core.SnakeGymCore` and forwarded by the `SnakeGym` wrapper.
 
 ## Testing
 

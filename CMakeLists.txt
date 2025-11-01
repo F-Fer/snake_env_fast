@@ -20,10 +20,6 @@ if(APPLE AND NOT DEFINED OpenMP_ROOT)
   endif()
 endif()
 
-if(APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  message(FATAL_ERROR "Detected GCC on macOS. Please rebuild with clang/clang++ (set CC=/usr/bin/clang and CXX=/usr/bin/clang++) to avoid libgomp/libomp conflicts.")
-endif()
-
 pybind11_add_module(snake_gym_core src/bindings.cpp src/env_core.cpp)
 find_package(OpenMP QUIET)
 if(OpenMP_CXX_FOUND)
