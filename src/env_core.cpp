@@ -6,7 +6,7 @@
 #include <iostream>
 #include <cstdint>
 #include <limits>
-#ifdef _OPENMP
+#if defined(_OPENMP)
 #include <omp.h>
 #endif
 

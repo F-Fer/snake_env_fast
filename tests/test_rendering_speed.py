@@ -12,7 +12,6 @@ def test_rendering_speed(num_envs=64):
 
     env = SnakeGymCore(
         num_envs=num_envs,
-        mode=RenderMode.RGB,
         map_size=MAP_SIZE,
         step_size=1,
         max_steps=50,
