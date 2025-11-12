@@ -7,8 +7,6 @@ set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 CONFIG REQUIRED)
 find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED)
 
-
-
 pybind11_add_module(snake_gym_core src/bindings.cpp src/env_core.cpp)
 find_package(OpenMP QUIET)
 if(OpenMP_CXX_FOUND)
